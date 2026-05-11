@@ -35,7 +35,7 @@ const PAGE_SIZE = 15;
     const status = item.sold ? 'SOLD OUT' : 'available';
     const sizeHint = item.sizes ? ` (sizes: ${item.sizes})` : '';
     const msg = item.sold
-      ? `Hi! I'm interested in the *${item.name}*${sizeHint} from The Panache Store — is it coming back in stock? 🙏`
+      ? `Hi! I'm interested in the *${item.name}*${sizeHint} from The Panache Store. Is it coming back in stock? 🙏`
       : `Hi! I'd like to enquire about the *${item.name}* (${fmtPrice(item.price)})${sizeHint} from The Panache Store.\n\n📸 ${item.postUrl}`;
     return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
   }
