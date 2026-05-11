@@ -499,15 +499,8 @@ img { max-width: 100%; display: block; }
   .filter-pills { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; gap: 6px; }
   .filter-pills::-webkit-scrollbar { display: none; }
   .filter-label { width: 100%; min-width: unset; font-size: 11px; margin-bottom: 2px; }
-  /* 2-column card grid */
-  .gallery { grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px 0 32px; }
-  .card-body { padding: 10px 12px 14px; gap: 6px; }
-  .card-title { font-size: 14px; }
-  .card-price { font-size: 15px; }
-  .size-chips { gap: 4px; }
-  .size-chip { font-size: 10px; padding: 2px 7px; }
-  .card-actions { flex-direction: column; gap: 6px; }
-  .btn-card { font-size: 12px; padding: 9px 10px; flex: unset; width: 100%; }
+  /* 1-column card grid */
+  .gallery { grid-template-columns: 1fr; gap: 16px; padding: 12px 0 32px; }
   /* Pagination */
   .pagination { padding: 4px 0 40px; }
   .page-btn { padding: 7px 11px; font-size: 13px; }
@@ -521,5 +514,4 @@ img { max-width: 100%; display: block; }
 }
 @media (max-width: 380px) {
   .hero-title { font-size: 38px; }
-  .gallery { grid-template-columns: 1fr 1fr; gap: 8px; }
 }
