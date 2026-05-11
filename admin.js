@@ -326,7 +326,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = 'data.json';
   a.click(); URL.revokeObjectURL(url);
-  showToast('Exported. Replace data.json in your site repo.');
+  showToast('Backup downloaded.');
 });
 
 document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFile').click());
@@ -344,9 +344,9 @@ document.getElementById('importFile').addEventListener('change', e => {
 });
 
 document.getElementById('resetBtn').addEventListener('click', async () => {
-  if (!confirm('Reset to data.json? Unsaved changes will be lost.')) return;
+  if (!confirm('Reload catalog? Any unsaved changes will be lost.')) return;
   localStorage.removeItem(STORAGE_KEY);
-  await loadData(); renderList(); buildDashboard(); showToast('Reset to file.');
+  await loadData(); renderList(); buildDashboard(); showToast('Catalog reloaded.');
 });
 
 // ====== EXPOSE TO ONCLICK ======
