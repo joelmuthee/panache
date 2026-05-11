@@ -1,5 +1,5 @@
 // The Panache Store — Admin
-const ADMIN_PASSWORD = 'panache2026';
+const ADMIN_PASSWORD = 'panache123';
 const STORAGE_KEY = 'panache_data';
 
 let items = [];
