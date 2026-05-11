@@ -1,6 +1,6 @@
 /* The Panache Store — purple & gold */
 :root {
-  --bg: #faf7ff;
+  --bg: #fdfcfb;
   --bg-card: #ffffff;
   --ink: #1a0a2e;
   --ink-soft: #4a3060;
@@ -11,7 +11,7 @@
   --gold: #f5a820;
   --gold-deep: #d48c10;
   --gold-light: #ffedb0;
-  --line: #ece5f5;
+  --line: #ede8f0;
   --shadow: 0 1px 2px rgba(82,20,122,0.04), 0 8px 24px rgba(82,20,122,0.07);
   --shadow-lg: 0 20px 60px rgba(82,20,122,0.14);
   --radius: 14px;
@@ -68,7 +68,7 @@ img { max-width: 100%; display: block; }
 
 /* ===== HERO ===== */
 .hero {
-  background: linear-gradient(135deg, #2a0840 0%, #52147a 45%, #3d1060 100%);
+  background: linear-gradient(135deg, #0d0118 0%, #2e0a4a 55%, #52147a 100%);
   color: #fff;
   padding: 80px 0 90px;
   position: relative;
