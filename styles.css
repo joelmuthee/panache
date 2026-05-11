@@ -125,7 +125,7 @@ img { max-width: 100%; display: block; }
 
 /* Left: text block */
 .hero-text { text-align: left; }
-.hero-eyebrow { font-size: 11px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold); margin-bottom: 22px; }
+.hero-eyebrow { font-size: 13px; letter-spacing: 0.08em; color: var(--gold); margin-bottom: 22px; }
 .hero-title { font-family: var(--serif); font-size: clamp(44px, 6vw, 80px); font-weight: 500; line-height: 1.02; letter-spacing: -0.01em; margin-bottom: 20px; }
 .hero-title em { color: var(--gold); font-style: italic; font-weight: 400; }
 .hero-sub { font-size: 17px; color: #ddd0f5; max-width: 440px; margin-bottom: 32px; line-height: 1.6; }
