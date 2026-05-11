@@ -1,0 +1,8 @@
+name = "panachekenya"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+account_id = "58685495706b973821d77208248c66fc"
+
+[[kv_namespaces]]
+binding = "ITEMS"
+id = "4a9453fda8b1487ba69556f0aabedbad"

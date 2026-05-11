@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Panache Store · ALDO Shoes Nairobi</title>
+<meta name="description" content="Premium ALDO shoes in Nairobi. Heels, flats, sandals, boots and more. Visit us at Piedmont Plaza, Ngong Road or order countrywide.">
+
+<!-- Open Graph / WhatsApp / Social sharing -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="The Panache Store · ALDO Shoes Nairobi">
+<meta property="og:description" content="Premium ALDO shoes in Nairobi. Heels, flats, sandals, boots and more. Shop or enquire on WhatsApp.">
+<meta property="og:image" content="https://joelmuthee.github.io/panache-kenya/images/logo.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:url" content="https://joelmuthee.github.io/panache-kenya/">
+<meta property="og:site_name" content="The Panache Store">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://joelmuthee.github.io/panache-kenya/images/logo.jpg">
+
+<link rel="icon" type="image/jpg" href="images/logo.jpg">
+<meta name="theme-color" content="#52147a">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="#" class="brand">
+      <img src="images/logo.jpg" alt="The Panache Store" class="brand-logo">
+      <span class="brand-text">The Panache</span>
+    </a>
+    <button class="nav-toggle" id="navToggle" aria-label="Open menu">
+      <span></span><span></span><span></span>
+    </button>
+    <div class="nav-links" id="navLinks">
+      <a href="#shop">Shop</a>
+      <a href="#about">About</a>
+      <a href="#how">How to buy</a>
+      <a href="#contact">Contact</a>
+      <a href="https://wa.me/2540734737373" class="nav-cta" target="_blank" rel="noopener">WhatsApp</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="hero-inner">
+    <p class="hero-eyebrow">Premium ALDO Shoes · Nairobi</p>
+    <h1 class="hero-title">Step into<br><em>style.</em></h1>
+    <p class="hero-sub">Authentic ALDO heels, flats, sandals and boots — hand-picked and always in stock. Visit us at Piedmont Plaza or order countrywide.</p>
+    <div class="hero-cta">
+      <a href="#shop" class="btn btn-primary">Browse the collection</a>
+      <a href="https://wa.me/2540734737373" class="btn btn-ghost" target="_blank" rel="noopener">Chat on WhatsApp</a>
+    </div>
+  </div>
+</header>
+
+<section class="filters" id="shop">
+  <div class="container">
+    <div class="filters-bar">
+      <h2 class="section-title">The Collection</h2>
+    </div>
+    <div class="filter-group">
+      <span class="filter-label">Category</span>
+      <div class="filter-pills" id="catPills">
+        <button class="pill active" data-cat="all">All</button>
+        <button class="pill" data-cat="Heels">Heels</button>
+        <button class="pill" data-cat="Flats">Flats</button>
+        <button class="pill" data-cat="Sandals">Sandals</button>
+        <button class="pill" data-cat="Boots">Boots</button>
+        <button class="pill" data-cat="Sneakers">Sneakers</button>
+        <button class="pill" data-cat="Loafers">Loafers</button>
+        <button class="pill" data-cat="Men's Shoes">Men's</button>
+      </div>
+    </div>
+    <div class="filter-group">
+      <span class="filter-label">Size (EU)</span>
+      <div class="filter-pills" id="sizePills">
+        <button class="pill active" data-size="all">All</button>
+        <button class="pill" data-size="35">35</button>
+        <button class="pill" data-size="36">36</button>
+        <button class="pill" data-size="37">37</button>
+        <button class="pill" data-size="38">38</button>
+        <button class="pill" data-size="39">39</button>
+        <button class="pill" data-size="40">40</button>
+        <button class="pill" data-size="41">41</button>
+        <button class="pill" data-size="42">42</button>
+        <button class="pill" data-size="43+">43+</button>
+      </div>
+    </div>
+    <div class="filter-group">
+      <span class="filter-label">Availability</span>
+      <div class="filter-pills" id="availPills">
+        <button class="pill active" data-avail="all">All</button>
+        <button class="pill" data-avail="available">Available</button>
+        <button class="pill" data-avail="sold">Sold out</button>
+      </div>
+    </div>
+    <p class="filter-meta" id="filterMeta"></p>
+  </div>
+</section>
+
+<main class="gallery container" id="gallery">
+  <!-- Items injected here -->
+</main>
+
+<div class="pagination container" id="pagination"></div>
+
+<section class="info" id="about">
+  <div class="container info-grid">
+    <div>
+      <h2>About The Panache Store</h2>
+      <p>The Panache Store is Nairobi's destination for authentic ALDO footwear — heels, flats, sandals, boots, sneakers and loafers for the modern woman (and man) who refuses to compromise on style.</p>
+      <p>Every pair is genuine ALDO, sourced directly and available in a full range of EU sizes. Walk in, try on, and walk out in something you love.</p>
+      <div class="address-block">
+        <span class="address-icon">📍</span>
+        <div>
+          <strong>Piedmont Plaza, Ngong Road</strong><br>
+          Opposite Kenya Science — Nairobi<br>
+          <a href="https://maps.google.com/?q=Piedmont+Plaza+Ngong+Road+Nairobi" target="_blank" rel="noopener" class="directions-link">Get directions →</a>
+        </div>
+      </div>
+    </div>
+    <div id="how">
+      <h2>How to buy</h2>
+      <ol class="steps">
+        <li>Tap <strong>Enquire</strong> on the pair you love — it opens WhatsApp with the item pre-filled.</li>
+        <li>Confirm your size and pay via M-Pesa to <strong>0734 737 373</strong> (The Panache).</li>
+        <li>Pick up at <strong>Piedmont Plaza, Ngong Road</strong> or arrange delivery anywhere in Kenya.</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- Map -->
+  <div class="container map-wrap">
+    <iframe
+      src="https://maps.google.com/maps?q=Piedmont+Plaza+Ngong+Road+Nairobi&t=&z=16&ie=UTF8&iwloc=&output=embed"
+      width="100%" height="340"
+      style="border:0;border-radius:14px;"
+      allowfullscreen loading="lazy"
+      referrerpolicy="no-referrer-when-downgrade"
+      title="The Panache Store location"></iframe>
+  </div>
+</section>
+
+<footer class="footer" id="contact">
+  <div class="container footer-inner">
+    <div class="footer-brand">
+      <img src="images/logo.jpg" alt="The Panache Store" class="brand-logo">
+      <div>
+        <p class="footer-name">The Panache Store</p>
+        <p class="footer-tagline">Step into style.</p>
+      </div>
+    </div>
+    <div class="footer-links">
+      <a href="https://wa.me/2540734737373" target="_blank" rel="noopener">WhatsApp · 0734 737 373</a>
+      <a href="https://www.instagram.com/thepanachekenya/" target="_blank" rel="noopener">Instagram · @thepanachekenya</a>
+      <span>📍 Piedmont Plaza, Ngong Road, Nairobi</span>
+      <a href="admin.html">Owner login</a>
+    </div>
+    <p class="footer-fine">© <span id="year"></span> The Panache Store · Nairobi · <a href="https://essenceautomations.com/websites" target="_blank" rel="noopener" class="footer-credit">Designed by Essence Automations</a></p>
+  </div>
+</footer>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" aria-hidden="true">
+  <button class="lightbox-close" id="lightboxClose" aria-label="Close">&times;</button>
+  <img class="lightbox-img" id="lightboxImg" alt="">
+  <div class="lightbox-caption" id="lightboxCaption"></div>
+</div>
+
+<script src="main.js"></script>
+</body>
+</html>

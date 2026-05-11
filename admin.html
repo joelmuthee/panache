@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Panache · Admin</title>
+<link rel="icon" type="image/jpg" href="images/logo.jpg">
+<meta name="theme-color" content="#52147a">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body style="background:#faf7ff;">
+
+<!-- LOGIN -->
+<div id="loginScreen" class="login-wrap">
+  <h1>Owner Login</h1>
+  <p>The Panache Store admin panel</p>
+  <div class="field">
+    <label>Password</label>
+    <input id="loginPassword" type="password" autocomplete="current-password" />
+  </div>
+  <button class="btn-admin primary" id="loginBtn" style="width:100%;margin-top:4px;">Sign in</button>
+  <p id="loginError" style="color:#b00020;font-size:13px;text-align:center;margin-top:12px;display:none;">Wrong password. Try again.</p>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard" class="admin-wrap" style="display:none;">
+
+  <div class="admin-header">
+    <h1>The Panache · Admin</h1>
+    <div class="admin-actions">
+      <button class="btn-admin" id="exportBtn">Export data.json</button>
+      <button class="btn-admin" id="importBtn">Import data.json</button>
+      <input id="importFile" type="file" accept=".json" style="display:none;">
+      <button class="btn-admin" id="resetBtn">Reset to file</button>
+      <a class="btn-admin" href="index.html" target="_blank">View site →</a>
+      <button class="btn-admin danger" id="logoutBtn">Logout</button>
+    </div>
+  </div>
+
+  <!-- SALES DASHBOARD -->
+  <div class="dashboard-section" id="salesDashboard">
+    <h2>Sales Dashboard</h2>
+    <div class="kpi-grid" id="kpiGrid">
+      <div class="kpi-card">
+        <div class="kpi-label">Today</div>
+        <div class="kpi-value" id="kpiToday">0</div>
+        <div class="kpi-sub" id="kpiTodayRev">Ksh 0</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">This Week</div>
+        <div class="kpi-value" id="kpiWeek">0</div>
+        <div class="kpi-sub" id="kpiWeekRev">Ksh 0</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">This Month</div>
+        <div class="kpi-value" id="kpiMonth">0</div>
+        <div class="kpi-sub" id="kpiMonthRev">Ksh 0</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">All Time</div>
+        <div class="kpi-value" id="kpiAll">0</div>
+        <div class="kpi-sub" id="kpiAllRev">Ksh 0</div>
+      </div>
+    </div>
+
+    <div class="dashboard-cols">
+      <div class="dash-panel">
+        <h3>Top Categories</h3>
+        <div id="topCats"><p class="no-data">No sales recorded yet.</p></div>
+      </div>
+      <div class="dash-panel">
+        <h3>Recent Sales</h3>
+        <div id="recentSales"><p class="no-data">No sales recorded yet.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD / EDIT ITEM -->
+  <div class="admin-form" id="itemForm">
+    <h2 id="formTitle">Add a new item</h2>
+    <input type="hidden" id="editingId">
+
+    <div class="field">
+      <label>Item image</label>
+      <input id="imageInput" type="file" accept="image/*">
+      <div id="imagePreview" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="field">
+      <label>Item name</label>
+      <input id="nameInput" type="text" placeholder="e.g. ALDO LoverBloom Pillow Walk Heel">
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label>Category</label>
+        <select id="catInput">
+          <option>Heels</option>
+          <option>Flats</option>
+          <option>Sandals</option>
+          <option>Boots</option>
+          <option>Sneakers</option>
+          <option>Loafers</option>
+          <option>Men's Shoes</option>
+          <option>Shoes</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Available Sizes (EU, comma-separated)</label>
+        <input id="sizesInput" type="text" placeholder="e.g. 36,37,38,39,40">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Description</label>
+      <textarea id="descInput" placeholder="Short description..."></textarea>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label>Price (Ksh)</label>
+        <input id="priceInput" type="number" min="0" step="100" placeholder="10000">
+      </div>
+      <div class="field">
+        <label>Instagram Post URL (optional)</label>
+        <input id="postUrlInput" type="url" placeholder="https://www.instagram.com/p/...">
+      </div>
+    </div>
+
+    <div class="field field-checkbox">
+      <input id="soldInput" type="checkbox">
+      <label for="soldInput" style="margin:0;">Mark as sold</label>
+    </div>
+
+    <!-- BUYER CAPTURE (shown when marking sold) -->
+    <div id="buyerFields" style="display:none;background:#faf7ff;border:1px solid #ece5f5;border-radius:10px;padding:16px;margin-top:10px;">
+      <p style="font-size:13px;font-weight:600;color:#4a3060;margin-bottom:12px;">Buyer details (for your records)</p>
+      <div class="field-row">
+        <div class="field">
+          <label>Buyer name</label>
+          <input id="buyerName" type="text" placeholder="Full name">
+        </div>
+        <div class="field">
+          <label>Buyer phone</label>
+          <input id="buyerPhone" type="tel" placeholder="07xx xxx xxx">
+        </div>
+      </div>
+      <div class="field">
+        <label>Notes (optional)</label>
+        <input id="buyerNotes" type="text" placeholder="e.g. delivery to Westlands">
+      </div>
+    </div>
+
+    <div class="admin-actions" style="margin-top:4px;">
+      <button class="btn-admin primary" id="saveBtn">Save item</button>
+      <button class="btn-admin" id="cancelBtn" style="display:none;">Cancel edit</button>
+    </div>
+  </div>
+
+  <h2 style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:500;margin:30px 0 16px;">
+    Catalog (<span id="itemCount">0</span>)
+  </h2>
+  <div class="admin-list" id="adminList"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="admin.js"></script>
+</body>
+</html>
