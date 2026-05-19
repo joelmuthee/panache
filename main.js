@@ -12,6 +12,7 @@ const PAGE_SIZE = 15;
   let currentSize = 'all';
   let currentAvail = 'all';
   let currentPage = 1;
+  const selectedSizes = new Map(); // itemId → selected EU size string
 
   // ── DATA ──
   async function loadData() {
@@ -25,15 +26,32 @@ const PAGE_SIZE = 15;
     }
   }
 
+  // ── LIKES (per-item deterministic base + per-visitor +1 stored locally) ──
+  const LIKES_KEY = 'panache_likes';
+  function itemBaseLikes(id) {
+    let h = 0;
+    for (let i = 0; i < id.length; i++) h = ((h << 5) - h + id.charCodeAt(i)) | 0;
+    return 7 + Math.abs(h) % 14; // 7..20 inclusive
+  }
+  function getLikedSet() {
+    try { return new Set(JSON.parse(localStorage.getItem(LIKES_KEY) || '[]')); }
+    catch { return new Set(); }
+  }
+  function saveLikedSet(set) {
+    try { localStorage.setItem(LIKES_KEY, JSON.stringify(Array.from(set))); } catch {}
+  }
+  function itemLikeCount(id) {
+    return itemBaseLikes(id) + (getLikedSet().has(id) ? 1 : 0);
+  }
+
   // ── HELPERS ──
   function fmtPrice(n) {
     return 'Ksh ' + Number(n).toLocaleString('en-KE');
   }
 
-  function whatsappLink(item) {
+  function whatsappLink(item, chosenSize) {
     const phone = settings.whatsappNumber || '2540734737373';
-    const status = item.sold ? 'SOLD OUT' : 'available';
-    const sizeHint = item.sizes ? ` (sizes: ${item.sizes})` : '';
+    const sizeHint = chosenSize ? ` (EU ${chosenSize})` : (item.sizes ? ` (sizes: ${item.sizes})` : '');
     const msg = item.sold
       ? `Hi! I'm interested in the *${item.name}*${sizeHint} from The Panache Store. Is it coming back in stock? 🙏`
       : `Hi! I'd like to enquire about the *${item.name}* (${fmtPrice(item.price)})${sizeHint} from The Panache Store.\n\n📸 ${item.postUrl}`;
@@ -50,11 +68,15 @@ const PAGE_SIZE = 15;
     return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
-  function sizeChips(sizes) {
-    if (!sizes) return '';
+  function sizeChips(item) {
+    const sizes = item.sizes || '';
     const list = sizes.split(',').map(s => s.trim()).filter(Boolean);
     if (!list.length) return '';
-    return `<div class="card-sizes">${list.map(s => `<span class="size-chip">${s}</span>`).join('')}</div>`;
+    const sel = selectedSizes.get(item.id);
+    const chips = list.map(s =>
+      `<button class="size-chip${s === sel ? ' active' : ''}" data-action="select-size" data-id="${item.id}" data-size="${s}" type="button">${s}</button>`
+    ).join('');
+    return `<div class="card-sizes" id="sizes-${item.id}">${chips}<span class="size-hint" id="size-hint-${item.id}"></span></div>`;
   }
 
   // ── FILTER ──
@@ -102,19 +124,23 @@ const PAGE_SIZE = 15;
         <div class="card-img-wrap" data-action="zoom" data-id="${item.id}">
           <img class="card-img" src="${item.image}" alt="${escapeHtml(item.name)}" loading="lazy">
           ${item.sold ? '<span class="badge-sold">Sold out</span>' : ''}
+          <button type="button" class="like-pill ${getLikedSet().has(item.id) ? 'liked' : ''}" data-action="like" data-id="${item.id}" aria-label="Like this item">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 21s-7.5-4.5-9.5-9.5C1 7.5 4 4 7.5 4c2 0 3.5 1.2 4.5 3 1-1.8 2.5-3 4.5-3C20 4 23 7.5 21.5 11.5 19.5 16.5 12 21 12 21z"/></svg>
+            <span class="like-count">${itemLikeCount(item.id)}</span>
+          </button>
         </div>
         <div class="card-body">
           <h3 class="card-title">${escapeHtml(item.name)}</h3>
-          ${sizeChips(item.sizes)}
+          ${sizeChips(item)}
           <div class="card-price-row">
             <span class="card-price">${fmtPrice(item.price)}</span>
             <span class="card-category">${escapeHtml(item.category)}</span>
           </div>
           <div class="card-actions">
             <a class="btn-card" href="${item.postUrl}" target="_blank" rel="noopener">View post</a>
-            <a class="btn-card primary ${item.sold ? 'sold-out' : ''}" href="${whatsappLink(item)}" target="_blank" rel="noopener">
+            <button class="btn-card primary ${item.sold ? 'sold-out' : ''}" data-action="enquire" data-id="${item.id}" type="button">
               ${waIcon()}${item.sold ? 'Enquire (sold)' : 'Enquire'}
-            </a>
+            </button>
           </div>
         </div>
       </article>
@@ -188,6 +214,74 @@ const PAGE_SIZE = 15;
   const lightboxClose = document.getElementById('lightboxClose');
 
   gallery.addEventListener('click', e => {
+    // Like-pill — toggle a heart, persist in localStorage. Stop propagation so
+    // the click doesn't also fire the card's data-action="zoom" handler.
+    const likeBtn = e.target.closest('[data-action="like"]');
+    if (likeBtn) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const id = likeBtn.dataset.id;
+      const liked = getLikedSet();
+      if (liked.has(id)) {
+        liked.delete(id);
+        likeBtn.classList.remove('liked');
+      } else {
+        liked.add(id);
+        likeBtn.classList.add('liked', 'pop');
+        setTimeout(() => likeBtn.classList.remove('pop'), 350);
+      }
+      saveLikedSet(liked);
+      const countEl = likeBtn.querySelector('.like-count');
+      if (countEl) countEl.textContent = itemLikeCount(id);
+      return;
+    }
+
+    // Size chip selection
+    const chip = e.target.closest('[data-action="select-size"]');
+    if (chip) {
+      const { id, size } = chip.dataset;
+      if (selectedSizes.get(id) === size) {
+        selectedSizes.delete(id); // toggle off
+      } else {
+        selectedSizes.set(id, size);
+      }
+      // Update chip active states without full re-render
+      const sizesRow = document.getElementById(`sizes-${id}`);
+      if (sizesRow) {
+        const sel = selectedSizes.get(id);
+        sizesRow.querySelectorAll('.size-chip').forEach(c => c.classList.toggle('active', c.dataset.size === sel));
+        const hint = document.getElementById(`size-hint-${id}`);
+        if (hint) hint.textContent = '';
+        sizesRow.classList.remove('shake');
+      }
+      return;
+    }
+
+    // Enquire button
+    const enquireBtn = e.target.closest('[data-action="enquire"]');
+    if (enquireBtn) {
+      const id = enquireBtn.dataset.id;
+      const item = items.find(i => i.id === id);
+      if (!item) return;
+      const hasSizes = item.sizes && item.sizes.trim().length > 0;
+      const chosen = selectedSizes.get(id);
+      // Require size selection only for available items that have sizes
+      if (!item.sold && hasSizes && !chosen) {
+        const sizesRow = document.getElementById(`sizes-${id}`);
+        const hint = document.getElementById(`size-hint-${id}`);
+        if (sizesRow) {
+          sizesRow.classList.remove('shake');
+          void sizesRow.offsetWidth; // reflow to restart animation
+          sizesRow.classList.add('shake');
+        }
+        if (hint) hint.textContent = 'Pick a size first';
+        return;
+      }
+      window.open(whatsappLink(item, chosen || null), '_blank', 'noopener');
+      return;
+    }
+
+    // Lightbox zoom
     const wrap = e.target.closest('[data-action="zoom"]');
     if (!wrap) return;
     const id = wrap.dataset.id;
