@@ -1,11 +1,16 @@
 // The Panache Store — Cloudflare Worker
-// GET    /api/items         → public
-// GET    /api/ig-fetch?url= → public, single IG post {code, imageUrl, imageUrls, caption, postUrl, isCarousel}
-// GET    /api/ig-proxy?url= → public, CORS-friendly pipe of an IG CDN image
-// POST   /api/bulk          → auth, replace entire catalog
-// POST   /api/items         → auth, create
-// PATCH  /api/items/:id     → auth, update
-// DELETE /api/items/:id     → auth, delete
+// GET    /api/items                  → public, full catalog
+// GET    /api/health                 → public liveness
+// GET    /api/ig-fetch?url=          → public, single IG post {code, imageUrl, imageUrls, caption, postUrl, isCarousel}
+// GET    /api/ig-proxy?url=          → public, CORS-friendly pipe of an IG CDN image
+// GET    /api/ig-feed?username=&user_id=&count=&max_id= → public, profile-feed (seed-time)
+// GET    /api/ig-discover?user_id=&limit= → auth, AI-classified fresh candidates for admin sync widget
+// GET    /api/ig-accept-license      → auth, one-time CF Workers AI EULA accept
+// GET    /api/ig-classify?shortcode= → auth, debug a single post against both classifiers
+// POST   /api/bulk                   → auth, replace entire catalog
+// POST   /api/items                  → auth, create
+// PATCH  /api/items/:id              → auth, update
+// DELETE /api/items/:id              → auth, delete
 // Auth: Authorization: Bearer <ADMIN_TOKEN>  (set via `wrangler secret put ADMIN_TOKEN`)
 
 const CORS = {
@@ -39,6 +44,399 @@ const decodeEntities = (s) => (s || "")
   .replace(/&nbsp;/g, " ")
   .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
   .replace(/&#x([0-9a-fA-F]+);/g, (_, n) => String.fromCharCode(parseInt(n, 16)));
+
+// ---- Caption → brand/category/stock heuristics for IG sync ----
+// Panache stocks women's footwear primarily (Heels, Flats, Sandals, Boots,
+// Sneakers, Loafers) + a Men's Shoes bucket. Order matters: specific models
+// before generic brand fallbacks.
+const PANACHE_BRANDS = [
+  ["nike air force",   "Nike Air Force",    "Sneakers"],
+  ["air force",        "Nike Air Force",    "Sneakers"],
+  ["nike air max",     "Nike Air Max",      "Sneakers"],
+  ["air max",          "Nike Air Max",      "Sneakers"],
+  ["nike cortez",      "Nike Cortez",       "Sneakers"],
+  ["nike dunk",        "Nike Dunk",         "Sneakers"],
+  ["jordan",           "Jordan",            "Sneakers"],
+  ["adidas samba",     "Adidas Samba",      "Sneakers"],
+  ["samba",            "Adidas Samba",      "Sneakers"],
+  ["stan smith",       "Adidas Stan Smith", "Sneakers"],
+  ["adidas",           "Adidas",            "Sneakers"],
+  ["puma",             "Puma",              "Sneakers"],
+  ["converse",         "Converse",          "Sneakers"],
+  ["vans",             "Vans",              "Sneakers"],
+  ["new balance",      "New Balance",       "Sneakers"],
+  ["asics",            "Asics",             "Sneakers"],
+  ["reebok",           "Reebok",            "Sneakers"],
+  ["nike",             "Nike",              "Sneakers"],
+  ["timberland",       "Timberland",        "Boots"],
+  ["dr martens",       "Dr Martens",        "Boots"],
+  ["doc martens",      "Dr Martens",        "Boots"],
+  ["ugg",              "UGG",               "Boots"],
+  ["chelsea boot",     "Chelsea Boots",     "Boots"],
+  ["ankle boot",       "Ankle Boots",       "Boots"],
+  ["cole haan",        "Cole Haan",         "Loafers"],
+  ["clarks",           "Clarks",            "Loafers"],
+  ["clark ",           "Clarks",            "Loafers"],
+  ["birkenstock",      "Birkenstock",       "Sandals"],
+  ["havaianas",        "Havaianas",         "Sandals"],
+  ["tory burch",       "Tory Burch",        "Flats"],
+  ["kate spade",       "Kate Spade",        "Flats"],
+  ["michael kors",     "Michael Kors",      "Heels"],
+  [/\bmk\b/,           "Michael Kors",      "Heels"],
+  ["nine west",        "Nine West",         "Heels"],
+  ["steve madden",     "Steve Madden",      "Heels"],
+  ["jessica simpson",  "Jessica Simpson",   "Heels"],
+  ["aldo",             "ALDO",              "Heels"],
+  // Generic style keywords (no brand) — used when caption lacks a brand name.
+  ["stiletto",         null,                "Heels"],
+  ["pump",             null,                "Heels"],
+  ["high heel",        null,                "Heels"],
+  ["heel",             null,                "Heels"],
+  ["ballerina",        null,                "Flats"],
+  ["ballet flat",      null,                "Flats"],
+  ["flats",            null,                "Flats"],
+  ["loafer",           null,                "Loafers"],
+  ["mocassin",         null,                "Loafers"],
+  ["moccasin",         null,                "Loafers"],
+  ["sandal",           null,                "Sandals"],
+  ["flip flop",        null,                "Sandals"],
+  ["slide",            null,                "Sandals"],  // Panache umbrella: slides are sandals
+  ["boot",             null,                "Boots"],
+  ["sneaker",          null,                "Sneakers"],
+  ["trainer",          null,                "Sneakers"],
+  ["men's",            null,                "Men's Shoes"],
+  ["mens ",            null,                "Men's Shoes"],
+];
+
+function deriveBrand(caption) {
+  let text = (caption || "").toLowerCase().trim();
+  text = text.replace(/^[a-z0-9._]+ /, "");  // strip leading "username "
+  const padded = " " + text + " ";
+  for (const [key, name, cat] of PANACHE_BRANDS) {
+    if (key instanceof RegExp) {
+      if (key.test(padded)) return [name, cat];
+    } else if (padded.includes(key)) {
+      return [name, cat];
+    }
+  }
+  return [null, null];
+}
+
+function parseCaptionForBag(caption) {
+  const text = (caption || "").trim();
+  const lower = text.toLowerCase();
+  const cleaned = text.split(/whastup|whatsapp|wa\.me|0746|0734/i)[0].trim().replace(/[.\s]+$/, "");
+  let [brand, category] = deriveBrand(caption);
+  if (!brand) {
+    const first = cleaned.split(/\.\.|,|\n/)[0].trim();
+    brand = first ? first.slice(0, 60).replace(/\b\w/g, c => c.toUpperCase()) : "New Pair";
+    category = category || "Heels";
+  }
+  // Panache uses stock: {EU_size_string: qty} — matching admin's schema. Sizes
+  // 35-46 covers women's footwear and the rare men's listings.
+  const stock = {};
+
+  // Multi-size patterns first: "sizes 36, 37, 38" / "EU 36/37/38".
+  const multi = lower.match(/sizes?\s+([\d,\s\/\-]+)/);
+  if (multi) {
+    multi[1].split(/[,\s\/]+/).forEach(part => {
+      const m = part.match(/(\d{2})/);
+      if (m) {
+        const n = +m[1];
+        if (n >= 35 && n <= 46) stock[String(n)] = 1;
+      }
+    });
+  }
+  // Hyphen ranges like "36-40" → expand to each size in range.
+  const range = lower.match(/(\d{2})\s*[-–to]+\s*(\d{2})/);
+  if (range && !Object.keys(stock).length) {
+    const a = +range[1], b = +range[2];
+    if (a >= 35 && b <= 46 && b - a < 12) {
+      for (let n = a; n <= b; n++) stock[String(n)] = 1;
+    }
+  }
+  // Single "#38", "EU 38", "Size 38", "38eu" patterns — only if multi missed.
+  if (!Object.keys(stock).length) {
+    const singles = lower.match(/(?:#|eu\s*|size\s*)(\d{2})|(\d{2})\s*eu\b/g) || [];
+    singles.forEach(s => {
+      const m = s.match(/(\d{2})/);
+      if (m) {
+        const n = +m[1];
+        if (n >= 35 && n <= 46) stock[String(n)] = 1;
+      }
+    });
+  }
+  if (!Object.keys(stock).length) stock["One Size"] = 1;
+  return {
+    name: brand,
+    category: category || "Heels",
+    stock,
+    description: "Quality footwear, photographed exactly as it is. Visit Piedmont Plaza, Ngong Road or order countrywide.",
+  };
+}
+
+function looksLikeProduct(caption) {
+  if (!caption) return false;
+  const lower = caption.toLowerCase();
+  if (/#\s*\d{2}|\beu\s*\d{2}|\bsize\s+\d|\d{2}\s*eu\b|sizes?\s+\d{2}/.test(lower)) return true;
+  for (const [key] of PANACHE_BRANDS) {
+    if (key instanceof RegExp ? key.test(lower) : lower.includes(key)) return true;
+  }
+  return false;
+}
+
+// Coerce model categories to Panache's allowed vocabulary. Silvarkicks-style
+// suggestions (Slides, Crossbody, Tshirt, etc.) shouldn't survive — Panache
+// is footwear only. Slides collapse into Sandals.
+const PANACHE_CATEGORIES_SET = new Set(["Heels", "Flats", "Sandals", "Boots", "Sneakers", "Loafers", "Men's Shoes"]);
+function coercePanacheCategory(c) {
+  if (!c) return null;
+  const t = String(c).trim();
+  if (PANACHE_CATEGORIES_SET.has(t)) return t;
+  if (/^slides?$/i.test(t)) return "Sandals";
+  if (/^(stilettos?|pumps?|high\s*heels?)$/i.test(t)) return "Heels";
+  if (/^ballerinas?$/i.test(t)) return "Flats";
+  if (/^(oxfords?|brogues?|derbys?|formal)$/i.test(t)) return "Men's Shoes";
+  if (/^sports?\/?athletic$/i.test(t)) return "Sneakers";
+  if (/^trainers?$/i.test(t)) return "Sneakers";
+  if (/^moccasins?$|^mocassins?$/i.test(t)) return "Loafers";
+  // Anything we can't safely map (Crossbody, Tote, Tshirt, Other) → null so the
+  // admin's category dropdown falls back to the heuristic suggestion.
+  return null;
+}
+
+function arrayToB64(buf) {
+  let s = "";
+  const CHUNK = 8192;
+  for (let i = 0; i < buf.length; i += CHUNK) {
+    s += String.fromCharCode(...buf.subarray(i, i + CHUNK));
+  }
+  return btoa(s);
+}
+
+// Vision-model classifier — Llama 3.2 11B Vision (Workers AI free tier) looks
+// at the actual photo + caption. Returns { is_shoe, name, category, reason } or
+// { _debug } on failure.
+async function classifyPostWithVision(env, caption, imageUrl) {
+  if (!env.AI || !imageUrl) return null;
+  try {
+    const imgRes = await fetch(imageUrl);
+    if (!imgRes.ok) return { _debug: `img fetch ${imgRes.status}` };
+    const imgBytes = new Uint8Array(await imgRes.arrayBuffer());
+    const trimmed = (caption || "").replace(/\s+/g, " ").slice(0, 400);
+    const prompt = `You sort Instagram posts from The Panache, a Nairobi women's footwear shop (with a small men's section). You're given ONE photo + ONE caption. Decide:
+1. Is this a single pair of shoes for sale? (is_shoe true|false)
+2. What brand/model? (name — short, e.g. "ALDO Pillow Walk Heel", "Steve Madden Sandals", or "New Pair" if unknown)
+3. What category? Pick EXACTLY one from this list:
+   Heels, Flats, Sandals, Boots, Sneakers, Loafers, Men's Shoes
+NEVER use Slides, Crossbody, Tote, Tshirts, or any other category — Panache only stocks women's footwear and men's shoes. Slides collapse into Sandals.
+
+Category guide:
+- Heels: visible heel >2 inches, dress shoe shape, stiletto, pump, kitten heel, block heel.
+- Flats: low or no heel, ballet flat, pointed flat, pump without heel, espadrille without wedge.
+- Sandals: open-toe with straps OR slip-on slides/flip-flops/pool slides — anything strappy or open-toe.
+- Boots: ankle-high or taller — ankle boots, chelsea boots, knee boots, combat boots.
+- Sneakers: athletic or casual lace-up, trainer, runner, basketball-style.
+- Loafers: slip-on dress shoe, penny loafer, mocassin, driving shoe.
+- Men's Shoes: visibly masculine cut (men's oxfords, men's sneakers, men's loafers, men's boots).
+
+is_shoe=false ONLY for: shop intros, banners, owner photos, marketing slides, sale announcements without a specific pair. Posts with a size signal (#38, EU 39, size 40, sizes 36-40) are ALWAYS shoes.
+
+Caption: """${trimmed}"""
+
+Reply with strict minified JSON, no prose, no code fences:
+{"is_shoe":true|false,"name":"<brand+model or New Pair>","category":"<one from the list>","reason":"<3-6 words>"}`;
+    const result = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
+      prompt,
+      image: Array.from(imgBytes),
+      max_tokens: 200,
+      temperature: 0.1,
+    });
+    // Vision response shape varies by Workers AI build. Sometimes already a
+    // parsed object, sometimes a JSON string.
+    let parsed = null;
+    if (result?.response && typeof result.response === "object") {
+      parsed = result.response;
+    } else {
+      let text = "";
+      if (typeof result?.response === "string") text = result.response;
+      else if (typeof result?.description === "string") text = result.description;
+      else if (typeof result === "string") text = result;
+      text = text.trim();
+      if (text) {
+        const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+        const m = cleaned.match(/\{[\s\S]*\}/);
+        if (m) {
+          try { parsed = JSON.parse(m[0]); } catch (_) {}
+        }
+      }
+    }
+    if (!parsed) return { _debug: "could not parse vision output", raw: JSON.stringify(result).slice(0, 400) };
+    return {
+      is_shoe: !!parsed.is_shoe,
+      name: parsed.name || null,
+      category: parsed.category || null,
+      reason: parsed.reason || "",
+      via: "vision",
+    };
+  } catch (err) {
+    return { _debug: `vision throw: ${err.message}` };
+  }
+}
+
+// Text-only LLM classifier — fallback when the vision call fails or to give a
+// second signal for name (text decodes brand shorthand better than vision).
+async function classifyPostWithAi(env, caption) {
+  if (!env.AI || !caption) return null;
+  const trimmed = caption.replace(/\s+/g, " ").slice(0, 400);
+  const prompt = `You sort Instagram posts from The Panache, a Nairobi women's footwear shop. Each post is either ONE specific pair of shoes for sale, OR a non-product post. Reply with strict minified JSON only, no prose, no code fences.
+
+Schema:
+{"is_shoe": true|false, "name": "<short brand + model OR generic descriptor>", "category": "<one of: Heels, Flats, Sandals, Boots, Sneakers, Loafers, Men's Shoes>", "reason": "<3-6 words>"}
+
+NEVER output "Slides", "Crossbody", "Tote", "Tshirts" or any other category — Panache only stocks women's footwear and men's shoes. Map slides → Sandals.
+
+Rules:
+- The shop posts a SINGLE pair per listing. Captions are short, often a brand or style + sizes.
+- is_shoe = true whenever there is a size signal (EU/#/size followed by a number 35-46, or "sizes 36-40"). Even if no brand is named, the post is a shoe. Use "New Pair" as the name in that case.
+- is_shoe = false ONLY for: shop intros, owner photos, marketing banners, anything with no specific pair and no size.
+- Brand hints: ALDO/Steve Madden/Nine West/Jessica Simpson/Michael Kors → Heels by default; Cole Haan/Clarks → Loafers; Birkenstock/Havaianas → Sandals; Tory Burch/Kate Spade → Flats; Nike/Adidas/Puma/Converse/Vans/New Balance → Sneakers; Timberland/Dr Martens/UGG → Boots.
+- name should be brand + model when known (e.g. "ALDO Kitten Heels", "Steve Madden Black Sandals"). Strip sizes and phone numbers. Unknown brand + size → "New Pair".
+- category must match the model. When the caption says "men's" or "for men", category = "Men's Shoes".
+
+Caption: """${trimmed}"""`;
+  try {
+    const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.1,
+      max_tokens: 120,
+    });
+    const text = (result?.response || "").trim();
+    const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+    const m = cleaned.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    const parsed = JSON.parse(m[0]);
+    return {
+      is_shoe: !!parsed.is_shoe,
+      name: parsed.name || null,
+      category: parsed.category || null,
+      reason: parsed.reason || "",
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+// IG response normalisers — kept module-level so /api/ig-feed + /api/ig-discover
+// can mix sources without going via HTTP (Workers can't fetch their own URL).
+function extractFromTimelineNode(node) {
+  const shortcode = node.shortcode || node.code;
+  let imageUrls = [];
+  const children = node.edge_sidecar_to_children?.edges || [];
+  if (children.length) {
+    imageUrls = children.map(({ node: c }) => c.display_url || c.image_versions2?.candidates?.[0]?.url).filter(Boolean);
+  } else if (node.display_url) {
+    imageUrls = [node.display_url];
+  } else if (node.image_versions2?.candidates?.length) {
+    imageUrls = [node.image_versions2.candidates[0].url];
+  }
+  const caption = node.edge_media_to_caption?.edges?.[0]?.node?.text || node.caption?.text || "";
+  return {
+    shortcode,
+    imageUrl: imageUrls[0],
+    imageUrls,
+    caption,
+    isCarousel: imageUrls.length > 1,
+    postUrl: `https://www.instagram.com/p/${shortcode}/`,
+    takenAt: node.taken_at_timestamp ? new Date(node.taken_at_timestamp * 1000).toISOString() : (node.taken_at ? new Date(node.taken_at * 1000).toISOString() : null),
+  };
+}
+
+function extractFromFeedItem(m) {
+  const carousel = m.carousel_media || [];
+  let imageUrls = [];
+  if (carousel.length) {
+    imageUrls = carousel.map(c => c.image_versions2?.candidates?.[0]?.url).filter(Boolean);
+  } else if (m.image_versions2?.candidates?.length) {
+    imageUrls = [m.image_versions2.candidates[0].url];
+  }
+  const shortcode = m.code;
+  const caption = m.caption?.text || "";
+  return {
+    shortcode,
+    imageUrl: imageUrls[0],
+    imageUrls,
+    caption,
+    isCarousel: imageUrls.length > 1,
+    postUrl: `https://www.instagram.com/p/${shortcode}/`,
+    takenAt: m.taken_at ? new Date(m.taken_at * 1000).toISOString() : null,
+  };
+}
+
+// 3-tier feed fetch — embedded timeline, then GraphQL, then /api/v1/feed/user/.
+async function fetchIgFeed({ username, userId: directUserId, count = 50, maxId = "" } = {}) {
+  const headers = {
+    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1",
+    "X-IG-App-ID": "936619743392459",
+    "Accept": "*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": `https://www.instagram.com/${username || ""}/`,
+  };
+  let userId, user = null, profile = null;
+  if (directUserId) {
+    userId = directUserId;
+    profile = { id: userId, username: username || null };
+  } else {
+    const pRes = await fetch(`https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`, { headers });
+    if (!pRes.ok) return { error: `profile lookup ${pRes.status}` };
+    const pData = await pRes.json();
+    user = pData?.data?.user;
+    if (!user?.id) return { error: "user id not found" };
+    userId = user.id;
+    profile = {
+      id: userId,
+      username: user.username,
+      fullName: user.full_name,
+      biography: user.biography,
+      profilePicUrl: user.profile_pic_url_hd || user.profile_pic_url,
+      followers: user.edge_followed_by?.count,
+    };
+  }
+  const qsTail = `?count=${count}${maxId ? `&max_id=${encodeURIComponent(maxId)}` : ""}`;
+  let items = [];
+  let moreAvailable = false;
+  let nextMaxId = null;
+  const embedded = user?.edge_owner_to_timeline_media;
+  if (!maxId && embedded?.edges?.length) {
+    items = embedded.edges.map(({ node }) => extractFromTimelineNode(node)).filter(it => it.imageUrl);
+    moreAvailable = !!embedded.page_info?.has_next_page;
+    nextMaxId = embedded.page_info?.end_cursor || null;
+  }
+  if (items.length < count && (maxId || moreAvailable || directUserId)) {
+    const cursor = maxId || nextMaxId;
+    const variables = encodeURIComponent(JSON.stringify({ id: userId, first: count, after: cursor || null }));
+    const gqlRes = await fetch(`https://www.instagram.com/graphql/query/?query_hash=003056d32c2554def87228bc3fd9668a&variables=${variables}`, { headers });
+    if (gqlRes.ok) {
+      const gData = await gqlRes.json();
+      const media = gData?.data?.user?.edge_owner_to_timeline_media;
+      if (media?.edges?.length) {
+        items = items.concat(media.edges.map(({ node }) => extractFromTimelineNode(node)).filter(it => it.imageUrl));
+        moreAvailable = !!media.page_info?.has_next_page;
+        nextMaxId = media.page_info?.end_cursor || null;
+      }
+    }
+  }
+  if (!items.length) {
+    let fRes = await fetch(`https://www.instagram.com/api/v1/feed/user/${userId}/${qsTail}`, { headers });
+    if (!fRes.ok) fRes = await fetch(`https://i.instagram.com/api/v1/feed/user/${userId}/${qsTail}`, { headers });
+    if (!fRes.ok) return { error: `feed fetch ${fRes.status}`, profile };
+    const fData = await fRes.json();
+    items = (fData.items || []).map(extractFromFeedItem).filter(it => it.imageUrl);
+    moreAvailable = !!fData.more_available;
+    nextMaxId = fData.next_max_id || null;
+  }
+  return { profile, items, count: items.length, more_available: moreAvailable, next_max_id: nextMaxId };
+}
 
 async function getData(env) {
   const raw = await env.ITEMS.get("data");
@@ -127,7 +525,6 @@ export default {
     // ---- IG quick-add: server-side fetch of a public Instagram post ----
     // Powers admin's "⚡ Fetch from Instagram" panel. CORS prevents the admin's
     // browser from doing this directly, so we go through the Worker.
-    // Reference implementation: Website Designs/ryker-luxury/worker/src/index.js
     //
     // Shortcode regex per CATALOG-STANDARDS: accept all IG public URL shapes —
     //   /p/<code>/         photo posts
@@ -239,8 +636,7 @@ export default {
     // ---- IG image proxy ----
     // Pipes an IG CDN image through the Worker so the admin can download it
     // without hitting CORS (IG CDN doesn't send Access-Control-Allow-Origin).
-    // Host allowlist: cdninstagram.com, fbcdn.net only. Sends Referer so the
-    // CDN doesn't 403 the request.
+    // Host allowlist: cdninstagram.com, fbcdn.net only.
     if (request.method === "GET" && path === "/api/ig-proxy") {
       const target = url.searchParams.get("url");
       if (!target) return json({ error: "url required" }, 400);
@@ -262,6 +658,152 @@ export default {
             "Cache-Control": "public, max-age=3600",
             "Access-Control-Allow-Origin": "*",
           },
+        });
+      } catch (err) {
+        return json({ error: err.message }, 502);
+      }
+    }
+
+    // ---- IG feed: server-side fetch of a profile's recent posts ----
+    // Used at seed-time to backfill a new catalog. Public so seed scripts don't
+    // need the admin token.
+    if (request.method === "GET" && path === "/api/ig-feed") {
+      const username = url.searchParams.get("username");
+      const count = Math.min(parseInt(url.searchParams.get("count") || "50", 10), 100);
+      const maxId = url.searchParams.get("max_id") || "";
+      const directUserId = url.searchParams.get("user_id") || "";
+      if (!username && !directUserId) return json({ error: "username or user_id required" }, 400);
+      try {
+        const result = await fetchIgFeed({ username, userId: directUserId, count, maxId });
+        return json(result, result.error ? 502 : 200);
+      } catch (err) {
+        return json({ error: err.message }, 502);
+      }
+    }
+
+    // One-time CF Workers AI EULA accept. Llama 3.2 Vision returns
+    // "5016: ... you must submit the prompt 'agree'" on the first call per
+    // account. Hit this once with admin auth after first deploy.
+    if (request.method === "GET" && path === "/api/ig-accept-license") {
+      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      try {
+        const r = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { prompt: "agree", max_tokens: 8 });
+        return json({ ok: true, response: r });
+      } catch (err) {
+        return json({ error: err.message }, 502);
+      }
+    }
+
+    // Debug: classify a single IG shortcode through both vision + text models.
+    // GET /api/ig-classify?shortcode=...&caption=... (caption optional, admin auth)
+    if (request.method === "GET" && path === "/api/ig-classify") {
+      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      const sc = url.searchParams.get("shortcode");
+      const capOverride = url.searchParams.get("caption");
+      if (!sc) return json({ error: "shortcode required" }, 400);
+      try {
+        const feed = await fetchIgFeed({ userId: "5474622302", count: 50 });
+        const found = (feed.items || []).find(i => i.shortcode === sc);
+        const imageUrl = found?.imageUrl || null;
+        const caption = capOverride || found?.caption || "";
+        const vision = await classifyPostWithVision(env, caption, imageUrl);
+        const text = await classifyPostWithAi(env, caption);
+        return json({ shortcode: sc, caption, imageUrl, vision, text_only: text });
+      } catch (err) {
+        return json({ error: err.message }, 502);
+      }
+    }
+
+    // ---- IG sync: discover new candidates (admin-only preview) ----
+    // GET /api/ig-discover?user_id=...&limit=20
+    //
+    // PANACHE NOTE: dedup happens CLIENT-SIDE against localStorage `items[]`,
+    // not server-side against KV. The admin's working items[] is typically
+    // ahead of whatever's in KV (admin uses localStorage as source of truth and
+    // syncs to data.json periodically). So this endpoint just returns the
+    // latest N candidates from IG with AI-suggested name/category/stock — the
+    // admin filters out anything already in its local items[] before rendering.
+    if (request.method === "GET" && path === "/api/ig-discover") {
+      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      const username = url.searchParams.get("username");
+      const directUserId = url.searchParams.get("user_id");
+      const limit = Math.min(parseInt(url.searchParams.get("limit") || "20", 10), 50);
+      if (!username && !directUserId) return json({ error: "username or user_id required" }, 400);
+
+      try {
+        const feedData = await fetchIgFeed({ username, userId: directUserId, count: 50 });
+        if (!feedData.items) return json({ error: feedData.error || "feed empty" }, 502);
+
+        // Classification pipeline (per candidate, in parallel):
+        //   1. Heuristic (regex/brand keywords). Liberal, fast, free.
+        //   2. Vision model — actually sees the photo (best for category).
+        //   3. Text-only LLM — best for decoding brand shorthand from caption.
+        //   4. Final is_shoe = heuristic OR vision.is_shoe OR text.is_shoe.
+        //   5. Name prefers text answer, then vision, then heuristic.
+        //   6. Category prefers vision (it saw the photo), then text, then heuristic.
+        //   7. All categories pass through coercePanacheCategory() so we never
+        //      ship hallucinated buckets to the admin dropdown.
+        const slice = feedData.items.slice(0, limit * 2);
+        const classified = await Promise.all(slice.map(async (it) => {
+          const heuristic = looksLikeProduct(it.caption);
+          const [vision, text] = await Promise.all([
+            classifyPostWithVision(env, it.caption, it.imageUrl),
+            classifyPostWithAi(env, it.caption),
+          ]);
+          const visionOk = vision && !vision._debug;
+          const isShoe = heuristic || (visionOk && vision.is_shoe) || (text && text.is_shoe);
+          if (!isShoe) return null;
+          const heuristicSuggestion = parseCaptionForBag(it.caption);
+
+          // Name fallback chain.
+          const looksLikeFragment = (n) => !n || /^(size|tn|hh|js\d+|nb)$/i.test(n.trim());
+          let name = heuristicSuggestion.name;
+          if (text?.is_shoe && !looksLikeFragment(text.name) && text.name !== "New Pair") {
+            name = text.name.trim();
+          } else if (visionOk && vision.is_shoe && !looksLikeFragment(vision.name) && vision.name !== "New Pair") {
+            name = vision.name.trim();
+          } else if (visionOk && vision.is_shoe && vision.name === "New Pair") {
+            name = "New Pair";
+          }
+
+          // Category fallback chain — coerce everything through the Panache
+          // vocabulary before returning.
+          let category = heuristicSuggestion.category;
+          if (visionOk && vision.is_shoe && vision.category) {
+            const c = coercePanacheCategory(vision.category);
+            if (c) category = c;
+          } else if (text?.is_shoe && text.category) {
+            const c = coercePanacheCategory(text.category);
+            if (c) category = c;
+          }
+          if (!PANACHE_CATEGORIES_SET.has(category)) category = "Heels"; // last-resort default
+
+          const reason = visionOk ? vision.reason : (text?.reason || (heuristic ? "matched product heuristic" : ""));
+          let classifier = "heuristic";
+          if (visionOk && text) classifier = "vision+text";
+          else if (visionOk) classifier = "vision";
+          else if (text) classifier = "text";
+
+          return {
+            ...it,
+            suggested: {
+              name,
+              category,
+              stock: heuristicSuggestion.stock,
+              description: heuristicSuggestion.description,
+            },
+            ai_reason: reason,
+            classifier,
+          };
+        }));
+        const candidates = classified.filter(Boolean).slice(0, limit);
+
+        return json({
+          count: candidates.length,
+          scanned: slice.length,
+          items: candidates,
+          profile: feedData.profile,
+          ai_enabled: !!env.AI,
         });
       } catch (err) {
         return json({ error: err.message }, 502);

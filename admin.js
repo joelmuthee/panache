@@ -1101,6 +1101,213 @@ adminItemSearchInput?.addEventListener('input', () => {
   }, 160);
 });
 
+// ====== INSTAGRAM BULK SYNC ======
+// Pulls latest @thepanachekenya posts, runs them through the Worker's hybrid
+// vision+text classifier, lets the owner review + tick, then commits to
+// localStorage CLIENT-SIDE (Panache's items[] lives in localStorage, not KV,
+// so the worker only suggests — admin writes).
+//
+// Architecture difference vs silvarkicks: silvarkicks POSTs the picks to
+// /api/ig-sync which downloads images + writes to KV in one shot. Panache
+// fetches images via /api/ig-proxy in the browser, base64-encodes them as
+// data URLs (matching the existing IG quick-add and admin upload flow), and
+// pushes the new item objects onto items[] directly.
+
+const IG_USER_ID = '5474622302';  // @thepanachekenya — resolved once and hard-coded
+const PANACHE_CATEGORIES = ['Heels', 'Flats', 'Sandals', 'Boots', 'Sneakers', 'Loafers', "Men's Shoes"];
+// Worker token. Base64'd so it doesn't sit raw in the repo. Decode at runtime.
+// Worker has the matching ADMIN_TOKEN secret set via `wrangler secret put`.
+const ADMIN_TOKEN = atob('YjMwMzQzMzdmYzA3NjUwMGEwMWM2YzAyMzczMTA0M2MwZDAzN2JmMmYxYjNlYWI4NWM4ZDMwZmNiOWViZDAyMw==');
+
+let igSyncCandidates = [];
+
+const igSyncCheckBtn = document.getElementById('igSyncCheckBtn');
+const igSyncCommitBtn = document.getElementById('igSyncCommitBtn');
+const igSyncCancelBtn = document.getElementById('igSyncCancelBtn');
+const igSyncStatus = document.getElementById('igSyncStatus');
+const igSyncListEl = document.getElementById('igSyncList');
+const igSyncCommitRow = document.getElementById('igSyncCommitRow');
+
+igSyncCheckBtn?.addEventListener('click', checkForNewIgPosts);
+igSyncCancelBtn?.addEventListener('click', resetIgSync);
+igSyncCommitBtn?.addEventListener('click', commitIgSync);
+
+async function checkForNewIgPosts() {
+  const apiBase = settings.apiBase || '';
+  if (!apiBase) {
+    igSyncStatus.textContent = '✗ settings.apiBase is not set in data.json — add it before using sync.';
+    return;
+  }
+  igSyncCheckBtn.disabled = true;
+  igSyncStatus.textContent = 'Checking Instagram…';
+  igSyncListEl.innerHTML = '';
+  igSyncCommitRow.style.display = 'none';
+  try {
+    const res = await fetch(`${apiBase}/api/ig-discover?user_id=${IG_USER_ID}&limit=20`, {
+      headers: { Authorization: `Bearer ${ADMIN_TOKEN}` },
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+
+    // Dedup against current localStorage items[] — the worker doesn't dedup
+    // because admin's items[] is the source of truth (often ahead of KV).
+    const existingIds = new Set(items.map(i => i.id));
+    const fresh = (data.items || []).filter(it => !existingIds.has(`ig_${it.shortcode}`));
+    igSyncCandidates = fresh;
+
+    if (!fresh.length) {
+      igSyncStatus.textContent = '✓ Catalog is up to date. No new posts on Instagram.';
+      igSyncCheckBtn.disabled = false;
+      return;
+    }
+    igSyncStatus.textContent = `Found ${fresh.length} new post${fresh.length === 1 ? '' : 's'}. Review below, then add.`;
+    renderIgSyncList();
+    igSyncCommitRow.style.display = 'flex';
+  } catch (err) {
+    igSyncStatus.textContent = '✗ ' + err.message;
+  } finally {
+    igSyncCheckBtn.disabled = false;
+  }
+}
+
+function renderIgSyncList() {
+  igSyncListEl.innerHTML = igSyncCandidates.map((it, i) => {
+    const s = it.suggested || {};
+    // Stock object → "EU 36 · 37 · 38" pill text. Skip "One Size" placeholder
+    // when there's nothing else, otherwise it reads as junk.
+    const sizes = Object.keys(s.stock || {}).filter(k => k !== 'One Size');
+    const stockText = sizes.length
+      ? 'EU ' + sizes.join(' · ')
+      : 'Pick size after adding';
+    const captionShort = (it.caption || '').replace(/\s+/g, ' ').slice(0, 120);
+    const catOpts = PANACHE_CATEGORIES.map(c => `<option value="${c}" ${c === s.category ? 'selected' : ''}>${c}</option>`).join('');
+    return `
+      <div class="ig-sync-row" data-idx="${i}">
+        <label class="ig-sync-check">
+          <input type="checkbox" data-ig-pick="${i}" checked>
+        </label>
+        <img src="${escapeHtml(it.imageUrl)}" alt="" referrerpolicy="no-referrer">
+        <div class="ig-sync-body">
+          <div class="ig-sync-row-1">
+            <input type="text" class="ig-sync-name" data-ig-name="${i}" value="${escapeHtml(s.name || '')}" placeholder="Name">
+            <select class="ig-sync-cat" data-ig-cat="${i}">${catOpts}</select>
+          </div>
+          <div class="ig-sync-row-2">
+            <span class="ig-sync-size">${escapeHtml(stockText)}</span>
+            <a href="${escapeHtml(it.postUrl)}" target="_blank" rel="noopener" class="ig-sync-postlink">view on IG ↗</a>
+          </div>
+          <div class="ig-sync-caption">${escapeHtml(captionShort)}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function resetIgSync() {
+  igSyncCandidates = [];
+  igSyncListEl.innerHTML = '';
+  igSyncCommitRow.style.display = 'none';
+  igSyncStatus.textContent = '';
+}
+
+// Reuse the same data-URL-from-IG pattern as the per-post quick-add (search
+// downloadAndStage above): proxy through worker → blob → FileReader → data URL.
+async function igStageImage(apiBase, imgUrl) {
+  const proxied = `${apiBase}/api/ig-proxy?url=${encodeURIComponent(imgUrl)}`;
+  const res = await fetch(proxied);
+  if (!res.ok) throw new Error(`Image download failed (${res.status})`);
+  const blob = await res.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);  // already "data:image/...;base64,..."
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function commitIgSync() {
+  const apiBase = settings.apiBase || '';
+  if (!apiBase) { showToast('settings.apiBase missing.'); return; }
+  const picks = [];
+  igSyncCandidates.forEach((it, i) => {
+    const cb = igSyncListEl.querySelector(`[data-ig-pick="${i}"]`);
+    if (!cb || !cb.checked) return;
+    const nameEl = igSyncListEl.querySelector(`[data-ig-name="${i}"]`);
+    const catEl = igSyncListEl.querySelector(`[data-ig-cat="${i}"]`);
+    picks.push({
+      shortcode: it.shortcode,
+      name: (nameEl?.value || it.suggested?.name || '').trim() || 'New Pair',
+      category: catEl?.value || it.suggested?.category || 'Heels',
+      stock: it.suggested?.stock || {},
+      description: it.suggested?.description || '',
+      imageUrls: it.imageUrls && it.imageUrls.length ? it.imageUrls : [it.imageUrl],
+      postUrl: it.postUrl,
+      takenAt: it.takenAt,
+    });
+  });
+  if (!picks.length) { showToast('Tick at least one pair to add.'); return; }
+
+  igSyncCommitBtn.disabled = true;
+  igSyncCommitBtn.textContent = `Adding ${picks.length}…`;
+
+  let added = 0;
+  const errors = [];
+  for (const p of picks) {
+    try {
+      // Skip if this shortcode somehow landed in items[] between Check and Add.
+      const id = `ig_${p.shortcode}`;
+      if (items.some(it => it.id === id)) {
+        errors.push({ shortcode: p.shortcode, reason: 'already in catalog' });
+        continue;
+      }
+      // Fetch up to 4 images and stage them as data URLs.
+      const urls = (p.imageUrls || []).slice(0, 4);
+      const dataUrls = [];
+      for (const u of urls) {
+        try {
+          const d = await igStageImage(apiBase, u);
+          dataUrls.push(d);
+        } catch (e) {
+          // Skip this image; carry on with whatever we got.
+          console.warn('ig-proxy image failed', u, e);
+        }
+      }
+      if (!dataUrls.length) {
+        errors.push({ shortcode: p.shortcode, reason: 'all images failed to download' });
+        continue;
+      }
+      const newItem = {
+        id,
+        name: p.name.slice(0, 80),
+        category: p.category,
+        description: p.description,
+        price: 0,  // owner fills in via Edit
+        stock: p.stock && typeof p.stock === 'object' ? { ...p.stock } : {},
+        sales: [],
+        image: dataUrls[0],
+        postUrl: p.postUrl || `https://www.instagram.com/p/${p.shortcode}/`,
+        createdAt: p.takenAt || new Date().toISOString(),
+      };
+      if (dataUrls.length > 1) newItem.images = dataUrls;
+      items.unshift(newItem);
+      added++;
+      igSyncStatus.textContent = `Adding ${added}/${picks.length}…`;
+    } catch (err) {
+      errors.push({ shortcode: p.shortcode, reason: err.message });
+    }
+  }
+
+  saveData();
+  resetIgSync();
+  renderList();
+  renderDashboard();
+  renderInventory();
+
+  showToast(`Added ${added} pair${added === 1 ? '' : 's'} from Instagram.`);
+  igSyncStatus.textContent = `✓ Added ${added}. ${errors.length ? `(${errors.length} failure${errors.length === 1 ? '' : 's'})` : 'Set the price and save to data.json.'}`;
+  igSyncCommitBtn.disabled = false;
+  igSyncCommitBtn.textContent = 'Add selected pairs';
+}
+
 // ====== INIT ======
 async function init() {
   await loadData();

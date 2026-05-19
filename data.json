@@ -657,6 +657,7 @@
     "whatsappNumber": "2540734737373",
     "address": "Piedmont Plaza, Ngong Road, Nairobi",
     "instagram": "thepanachekenya",
-    "phone": "0734737373"
+    "phone": "0734737373",
+    "apiBase": "https://panachekenya.stawisystems.workers.dev"
   }
 }
