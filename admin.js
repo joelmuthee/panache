@@ -113,6 +113,66 @@ function showToast(msg) {
   setTimeout(() => toast.classList.remove('show'), 2500);
 }
 
+// ====== IN-PAGE DIALOGS (webview-safe replacements for confirm()/prompt()) ======
+// WhatsApp/Instagram in-app browsers silently suppress native confirm()/prompt()
+// (confirm() returns false without showing), so destructive admin actions did
+// nothing. These promise-based modals work everywhere.
+function confirmAction(message, okLabel = 'Confirm') {
+  return new Promise(resolve => {
+    const modal = document.getElementById('confirmModal');
+    const msgEl = document.getElementById('confirmModalMsg');
+    const okBtn = document.getElementById('confirmModalOk');
+    const cancelBtn = document.getElementById('confirmModalCancel');
+    msgEl.textContent = message;
+    okBtn.textContent = okLabel;
+    modal.style.display = 'flex';
+    const cleanup = result => {
+      modal.style.display = 'none';
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      resolve(result);
+    };
+    const onOk = () => cleanup(true);
+    const onCancel = () => cleanup(false);
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+  });
+}
+
+function chooseCategory() {
+  return new Promise(resolve => {
+    const modal = document.getElementById('categoryModal');
+    const sel = document.getElementById('categoryModalSelect');
+    const newWrap = document.getElementById('categoryModalNewWrap');
+    const newInput = document.getElementById('categoryModalNew');
+    const okBtn = document.getElementById('categoryModalOk');
+    const cancelBtn = document.getElementById('categoryModalCancel');
+    const cats = [...new Set(items.map(b => b.category).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    sel.innerHTML = cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')
+      + '<option value="__new__">+ New category…</option>';
+    newWrap.style.display = 'none';
+    newInput.value = '';
+    modal.style.display = 'flex';
+    const onSelChange = () => {
+      const isNew = sel.value === '__new__';
+      newWrap.style.display = isNew ? '' : 'none';
+      if (isNew) newInput.focus();
+    };
+    const cleanup = result => {
+      modal.style.display = 'none';
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      sel.removeEventListener('change', onSelChange);
+      resolve(result);
+    };
+    const onOk = () => cleanup((sel.value === '__new__' ? newInput.value.trim() : sel.value) || null);
+    const onCancel = () => cleanup(null);
+    sel.addEventListener('change', onSelChange);
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+  });
+}
+
 // ====== HELPERS ======
 function escapeHtml(s) {
   return String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -496,8 +556,8 @@ function editItem(id) {
   document.getElementById('formTitle').scrollIntoView({ behavior: 'auto', block: 'start' });
 }
 
-function deleteItem(id) {
-  if (!confirm('Delete this item? This cannot be undone.')) return;
+async function deleteItem(id) {
+  if (!await confirmAction('Delete this item? This cannot be undone.', 'Delete')) return;
   items = items.filter(i => i.id !== id);
   saveData();
   renderList();
@@ -840,8 +900,8 @@ function bulkClear() { bulkSelected.clear(); renderList(); }
 
 function bulkSelectAll() { items.forEach(i => bulkSelected.add(i.id)); renderList(); }
 
-function bulkDelete() {
-  if (!confirm(`Delete ${bulkSelected.size} item(s)? This cannot be undone.`)) return;
+async function bulkDelete() {
+  if (!await confirmAction(`Delete ${bulkSelected.size} item(s)? This cannot be undone.`, 'Delete')) return;
   items = items.filter(i => !bulkSelected.has(i.id));
   bulkSelected.clear();
   saveData();
@@ -851,8 +911,8 @@ function bulkDelete() {
   showToast('Deleted.');
 }
 
-function bulkSetCategory() {
-  const cat = prompt('Set category for selected items:\n(e.g. Heels, Flats, Sandals, Boots, Sneakers, Loafers)');
+async function bulkSetCategory() {
+  const cat = await chooseCategory();
   if (!cat) return;
   items.forEach(i => { if (bulkSelected.has(i.id)) i.category = cat; });
   saveData();
@@ -1004,10 +1064,10 @@ document.getElementById('broadcastCopyBtn')?.addEventListener('click', () => {
   showToast('Message copied — paste into your WhatsApp broadcast.');
 });
 
-document.getElementById('broadcastStartBtn')?.addEventListener('click', () => {
+document.getElementById('broadcastStartBtn')?.addEventListener('click', async () => {
   const recipients = pastBuyers().filter(b => broadcastRecipientsState[b.phone]?.included);
   if (!recipients.length) { showToast('Pick at least one recipient.'); return; }
-  if (!confirm(`Open ${recipients.length} WhatsApp window${recipients.length === 1 ? '' : 's'}, one per buyer. Send each one manually. OK?`)) return;
+  if (!await confirmAction(`Open ${recipients.length} WhatsApp window${recipients.length === 1 ? '' : 's'}, one per buyer. Send each one manually. OK?`)) return;
   let i = 0;
   function next() {
     if (i >= recipients.length) {
@@ -1083,8 +1143,8 @@ function renderInsights() {
     : '<p style="color:#999;font-size:13px;">No empty searches yet — shoppers find what they look for.</p>';
 }
 
-document.getElementById('insightsResetBtn')?.addEventListener('click', () => {
-  if (!confirm('Reset all insights on this device? This only affects this browser.')) return;
+document.getElementById('insightsResetBtn')?.addEventListener('click', async () => {
+  if (!await confirmAction('Reset all insights on this device? This only affects this browser.')) return;
   localStorage.removeItem(INSIGHTS_KEY);
   renderInsights();
   showToast('Insights reset on this device.');
