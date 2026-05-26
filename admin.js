@@ -723,6 +723,74 @@ document.getElementById('saleSaveBtn').addEventListener('click', () => {
 document.getElementById('saleCancelBtn').addEventListener('click', closeSaleModal);
 saleModal.addEventListener('click', e => { if (e.target === saleModal) closeSaleModal(); });
 
+// ====== EDIT / UNDO A RECORDED SALE ======
+let editingSale = null; // { itemId, soldAt }
+
+async function undoSale(itemId, soldAt) {
+  if (!await confirmAction('Undo this sale? The quantity goes back into stock.', 'Undo sale')) return;
+  const item = items.find(i => i.id === itemId);
+  if (!item) return;
+  const idx = (item.sales || []).findIndex(x => x.soldAt === soldAt);
+  if (idx === -1) return;
+  const s = item.sales[idx];
+  if (item.stock && item.stock[s.size] !== undefined) {
+    item.stock[s.size] = (Number(item.stock[s.size]) || 0) + (Number(s.qty) || 1);
+  }
+  item.sales.splice(idx, 1);
+  saveData();
+  renderList();
+  renderDashboard();
+  renderInventory();
+  showToast('Sale undone, stock restored.');
+}
+
+function openEditSale(itemId, soldAt) {
+  const item = items.find(i => i.id === itemId);
+  if (!item) return;
+  const s = (item.sales || []).find(x => x.soldAt === soldAt);
+  if (!s) return;
+  editingSale = { itemId, soldAt };
+  document.getElementById('editSaleTitle').textContent = `Edit sale: ${item.name}`;
+  document.getElementById('editSaleSize').value = s.size || '';
+  document.getElementById('editSaleQty').value = s.qty || 1;
+  document.getElementById('editSalePrice').value = (s.salePrice != null ? s.salePrice : item.price) || 0;
+  document.getElementById('editBuyerName').value = s.buyerName || '';
+  document.getElementById('editBuyerPhone').value = s.buyerPhone || '';
+  document.getElementById('editBuyerNotes').value = s.notes || '';
+  document.getElementById('editSaleModal').style.display = 'flex';
+}
+
+function closeEditSale() { document.getElementById('editSaleModal').style.display = 'none'; editingSale = null; }
+
+document.getElementById('editSaleSaveBtn').addEventListener('click', () => {
+  if (!editingSale) return;
+  const item = items.find(i => i.id === editingSale.itemId);
+  if (!item) return;
+  const s = (item.sales || []).find(x => x.soldAt === editingSale.soldAt);
+  if (!s) return;
+  const newSize = document.getElementById('editSaleSize').value.trim() || s.size;
+  const newQty = parseInt(document.getElementById('editSaleQty').value, 10) || 1;
+  const newPrice = parseInt(document.getElementById('editSalePrice').value, 10) || item.price;
+  // Correct stock: put the old quantity back, then take the new quantity out
+  if (item.stock) {
+    if (item.stock[s.size] !== undefined) item.stock[s.size] = (Number(item.stock[s.size]) || 0) + (Number(s.qty) || 1);
+    if (item.stock[newSize] !== undefined) item.stock[newSize] = Math.max(0, (Number(item.stock[newSize]) || 0) - newQty);
+  }
+  s.size = newSize;
+  s.qty = newQty;
+  s.salePrice = newPrice;
+  s.buyerName = document.getElementById('editBuyerName').value.trim();
+  s.buyerPhone = document.getElementById('editBuyerPhone').value.trim();
+  s.notes = document.getElementById('editBuyerNotes').value.trim();
+  closeEditSale();
+  saveData();
+  renderList();
+  renderDashboard();
+  renderInventory();
+  showToast('Sale updated.');
+});
+document.getElementById('editSaleCancelBtn').addEventListener('click', closeEditSale);
+
 // ====== RESTOCK MODAL ======
 const restockModal = document.getElementById('restockModal');
 
@@ -817,14 +885,20 @@ function renderDashboard() {
   // Recent sales
   const allSaleRecords = [];
   items.forEach(item => (item.sales || []).forEach(s => allSaleRecords.push({ item, s })));
-  const recent = allSaleRecords.sort((a, b) => new Date(b.s.soldAt) - new Date(a.s.soldAt)).slice(0, 6);
+  const recent = allSaleRecords.sort((a, b) => new Date(b.s.soldAt) - new Date(a.s.soldAt)).slice(0, 20);
   document.getElementById('recentSales').innerHTML = recent.length
     ? recent.map(({ item, s }) => `
         <div class="recent-row">
-          <img src="${item.image}" alt="${escapeHtml(item.name)}">
-          <div>
-            <div class="recent-name">${escapeHtml(item.name)} · EU ${escapeHtml(s.size || '')} × ${s.qty || 1}</div>
-            <div class="recent-meta">${fmtKsh(s.salePrice || item.price)} · ${s.buyerName ? escapeHtml(s.buyerName) : 'No buyer saved'} · ${relTime(s.soldAt)}</div>
+          <div class="recent-main">
+            <img src="${item.image}" alt="${escapeHtml(item.name)}">
+            <div>
+              <div class="recent-name">${escapeHtml(item.name)} · EU ${escapeHtml(s.size || '')} × ${s.qty || 1}</div>
+              <div class="recent-meta">${fmtKsh(s.salePrice || item.price)} · ${s.buyerName ? escapeHtml(s.buyerName) : 'No buyer saved'} · ${relTime(s.soldAt)}</div>
+            </div>
+          </div>
+          <div class="recent-actions">
+            <button onclick="openEditSale('${item.id}','${s.soldAt}')">Edit</button>
+            <button class="danger" onclick="undoSale('${item.id}','${s.soldAt}')">Undo</button>
           </div>
         </div>`).join('')
     : '<p style="color:#999;font-size:13px;">No sales recorded yet.</p>';
@@ -1183,6 +1257,8 @@ window.editItem = editItem;
 window.deleteItem = deleteItem;
 window.openSaleModal = openSaleModal;
 window.openRestockModal = openRestockModal;
+window.undoSale = undoSale;
+window.openEditSale = openEditSale;
 window.bulkClear = bulkClear;
 window.bulkSelectAll = bulkSelectAll;
 window.bulkDelete = bulkDelete;

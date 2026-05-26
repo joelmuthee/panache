@@ -621,8 +621,17 @@ img { max-width: 100%; display: block; }
 .cat-bar-fill { background: var(--gold); height: 100%; transition: width 0.4s; }
 
 /* ===== RECENT SALES LIST ===== */
-.recent-list { display: flex; flex-direction: column; gap: 10px; }
-.recent-row { display: flex; gap: 10px; align-items: center; }
+.recent-list { display: flex; flex-direction: column; gap: 10px; max-height: 420px; overflow-y: auto; padding-right: 4px; scrollbar-width: thin; scrollbar-color: var(--gold) var(--surface); }
+.recent-list::-webkit-scrollbar { width: 8px; }
+.recent-list::-webkit-scrollbar-track { background: var(--surface); border-radius: 4px; }
+.recent-list::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 4px; }
+.recent-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.recent-main { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.recent-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.recent-actions button { padding: 5px 10px; font-size: 12px; border-radius: 6px; border: 1px solid var(--line); background: #fff; cursor: pointer; font-family: inherit; }
+.recent-actions button:hover { background: var(--ink); color: var(--gold-light); border-color: var(--ink); }
+.recent-actions button.danger { color: #b00020; border-color: #f3c5cc; }
+.recent-actions button.danger:hover { background: #b00020; color: #fff; border-color: #b00020; }
 .recent-row img { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; flex-shrink: 0; }
 .recent-name { font-size: 13px; font-weight: 600; color: var(--ink); }
 .recent-meta { font-size: 12px; color: var(--ink-faint); margin-top: 2px; }
