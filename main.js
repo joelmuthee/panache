@@ -8,6 +8,7 @@ const PAGE_SIZE = 15;
 
   let items = [];
   let settings = {};
+  let suspended = false;
   let currentCat = 'all';
   let currentSize = 'all';
   let currentAvail = 'all';
@@ -23,6 +24,16 @@ const PAGE_SIZE = 15;
       settings = json.settings || {};
     } catch (e) {
       console.error('Failed to load data.json', e);
+    }
+    // Billing kill-switch lives on the worker, not in data.json. Read it from
+    // /api/items so a billing suspend takes the public site offline even though
+    // the catalog itself is served from the static data.json.
+    if (settings.apiBase) {
+      try {
+        const res = await fetch(`${settings.apiBase}/api/items?_=${Date.now()}`);
+        const json = await res.json();
+        suspended = !!json.suspended;
+      } catch (e) {}
     }
   }
 
@@ -344,6 +355,19 @@ const PAGE_SIZE = 15;
   // ── YEAR ──
   document.getElementById('year').textContent = new Date().getFullYear();
 
+  // ── BILLING KILL-SWITCH ──
+  // When suspended, replace the whole page with a neutral "offline" notice.
+  function showSuspended() {
+    document.documentElement.style.overflow = 'hidden';
+    const o = document.createElement('div');
+    o.id = 'suspendedOverlay';
+    o.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#16110c;color:#eee;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px;font-family:system-ui,-apple-system,sans-serif;';
+    o.innerHTML = '<h1 style="font-weight:600;font-size:clamp(26px,5vw,40px);margin:0 0 14px;">This store is temporarily offline</h1>'
+      + '<p style="font-size:16px;max-width:440px;line-height:1.6;opacity:0.8;margin:0;">We are not taking orders right now. Please check back soon.</p>';
+    document.body.appendChild(o);
+  }
+
   await loadData();
+  if (suspended) { showSuspended(); return; }
   render();
 })();

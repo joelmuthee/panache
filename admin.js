@@ -6,6 +6,7 @@ const ALL_EU_SIZES = ['35','36','37','38','39','40','41','42','43','44','45'];
 
 let items = [];
 let settings = {};
+let accountSuspended = false;
 let editingId = null;
 let stagedImage = null; // { base64, ext, dataUrl }
 let stagedExtras = [];
@@ -103,6 +104,33 @@ async function loadData() {
 function saveData() {
   items.forEach(syncLegacyFields);
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ items, settings }));
+}
+
+// Billing kill-switch — owner can't flip it (only the master token can), but
+// the admin reads it so we can show the owner WHY the public site is offline.
+// Panache's admin loads the catalog from localStorage/data.json, so the flag is
+// fetched separately from the worker's /api/items.
+async function loadSuspendedFlag() {
+  if (!settings.apiBase) return;
+  try {
+    const res = await fetch(`${settings.apiBase}/api/items?_=${Date.now()}`);
+    const json = await res.json();
+    accountSuspended = !!json.suspended;
+  } catch (e) {}
+}
+
+// Owner-facing notice when billing has suspended the store. The public site is
+// dark; this tells the owner why and how to restore (they can't unflip it).
+function renderSuspendedBanner() {
+  let b = document.getElementById('suspendedBanner');
+  if (!accountSuspended) { if (b) b.remove(); return; }
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'suspendedBanner';
+    b.style.cssText = 'position:sticky;top:0;z-index:9000;background:#b00020;color:#fff;padding:12px 16px;text-align:center;font-size:14px;font-weight:600;line-height:1.4;';
+    document.body.prepend(b);
+  }
+  b.innerHTML = 'Your store is currently offline because payment is overdue. Please contact Essence Automations to restore it. <a href="https://wa.me/254720615606" style="color:#fff;text-decoration:underline;">Message us</a>';
 }
 
 // ====== TOAST ======
@@ -1545,6 +1573,8 @@ async function commitIgSync() {
 // ====== INIT ======
 async function init() {
   await loadData();
+  await loadSuspendedFlag();
+  renderSuspendedBanner();
   renderList();
   renderDashboard();
   renderInventory();

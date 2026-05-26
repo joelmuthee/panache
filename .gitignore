@@ -1,0 +1,6 @@
+node_modules/
+.wrangler/
+.firecrawl/
+.claude/
+.playwright-mcp/
+worker/.master-token
