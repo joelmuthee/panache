@@ -60,7 +60,7 @@ const PAGE_SIZE = 15;
     return 'Ksh ' + Number(n).toLocaleString('en-KE');
   }
 
-  // Message body WITHOUT the trailing "\n\n📸 postUrl" tail — used as the share-sheet caption.
+  // Message body WITHOUT the trailing "\n\n📸 postUrl" tail.
   function enquireBody(item, chosenSize) {
     const sizeHint = chosenSize ? ` (EU ${chosenSize})` : (item.sizes ? ` (sizes: ${item.sizes})` : '');
     return item.sold
@@ -77,27 +77,9 @@ const PAGE_SIZE = 15;
     return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
   }
 
-  // Tier 1 (mobile): share the actual product photo through the native share sheet so it
-  // arrives in WhatsApp as a real image attachment, not just a link. Returns true if shared.
-  async function tryShareWithImage(item, chosenSize) {
-    if (!navigator.canShare || !navigator.share) return false;
-    if (!item.image) return false;
-    try {
-      const res = await fetch(item.image, { mode: 'cors' });
-      if (!res.ok) return false;
-      const blob = await res.blob();
-      const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
-      const file = new File([blob], `${item.name.replace(/[^a-z0-9]+/gi, '_')}.${ext}`, { type: blob.type });
-      if (!navigator.canShare({ files: [file] })) return false;
-      const message = enquireBody(item, chosenSize);
-      try { await navigator.clipboard.writeText(message); } catch (_) { /* ignore */ }
-      await navigator.share({ files: [file], text: message, title: item.name });
-      return true;
-    } catch (_) {
-      // user cancelled or share failed — caller falls back to wa.me
-      return false;
-    }
-  }
+  // Enquire opens WhatsApp directly via the wa.me link (which appends the Instagram
+  // post URL so WhatsApp still shows a preview). Do NOT reintroduce navigator.share
+  // here — it forces the OS "select an app" picker, which buyers found confusing.
 
   function waIcon() {
     return `<svg class="wa-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -318,12 +300,8 @@ const PAGE_SIZE = 15;
         if (hint) hint.textContent = 'Pick a size first';
         return;
       }
-      // Tier 1: on mobile, push the real photo via the native share sheet; fall back to wa.me.
-      const isMobile = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-      if (isMobile && navigator.canShare) {
-        const shared = await tryShareWithImage(item, chosen || null);
-        if (shared) return;
-      }
+      // Open WhatsApp directly. whatsappLink appends the Instagram post URL so
+      // WhatsApp still renders a preview card — no OS app-picker.
       window.open(whatsappLink(item, chosen || null), '_blank', 'noopener');
       return;
     }
