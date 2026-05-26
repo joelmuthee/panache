@@ -362,8 +362,8 @@ const PAGE_SIZE = 15;
     const o = document.createElement('div');
     o.id = 'suspendedOverlay';
     o.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#16110c;color:#eee;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px;font-family:system-ui,-apple-system,sans-serif;';
-    o.innerHTML = '<h1 style="font-weight:600;font-size:clamp(26px,5vw,40px);margin:0 0 14px;">This store is temporarily offline</h1>'
-      + '<p style="font-size:16px;max-width:440px;line-height:1.6;opacity:0.8;margin:0;">We are not taking orders right now. Please check back soon.</p>';
+    o.innerHTML = '<h1 style="font-weight:600;font-size:clamp(26px,5vw,40px);margin:0 0 14px;">This page is temporarily unavailable</h1>'
+      + '<p style="font-size:16px;max-width:440px;line-height:1.6;opacity:0.8;margin:0;">Please check back soon.</p>';
     document.body.appendChild(o);
   }
 
