@@ -49,13 +49,43 @@ const PAGE_SIZE = 15;
     return 'Ksh ' + Number(n).toLocaleString('en-KE');
   }
 
+  // Message body WITHOUT the trailing "\n\n📸 postUrl" tail — used as the share-sheet caption.
+  function enquireBody(item, chosenSize) {
+    const sizeHint = chosenSize ? ` (EU ${chosenSize})` : (item.sizes ? ` (sizes: ${item.sizes})` : '');
+    return item.sold
+      ? `Hi! I'm interested in the *${item.name}*${sizeHint} from The Panache Store. Is it coming back in stock? 🙏`
+      : `Hi! I'd like to enquire about the *${item.name}* (${fmtPrice(item.price)})${sizeHint} from The Panache Store.`;
+  }
+
   function whatsappLink(item, chosenSize) {
     const phone = settings.whatsappNumber || '2540734737373';
-    const sizeHint = chosenSize ? ` (EU ${chosenSize})` : (item.sizes ? ` (sizes: ${item.sizes})` : '');
+    // wa.me fallback keeps the Instagram post link tail so WhatsApp shows a preview.
     const msg = item.sold
-      ? `Hi! I'm interested in the *${item.name}*${sizeHint} from The Panache Store. Is it coming back in stock? 🙏`
-      : `Hi! I'd like to enquire about the *${item.name}* (${fmtPrice(item.price)})${sizeHint} from The Panache Store.\n\n📸 ${item.postUrl}`;
+      ? enquireBody(item, chosenSize)
+      : `${enquireBody(item, chosenSize)}\n\n📸 ${item.postUrl}`;
     return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+  }
+
+  // Tier 1 (mobile): share the actual product photo through the native share sheet so it
+  // arrives in WhatsApp as a real image attachment, not just a link. Returns true if shared.
+  async function tryShareWithImage(item, chosenSize) {
+    if (!navigator.canShare || !navigator.share) return false;
+    if (!item.image) return false;
+    try {
+      const res = await fetch(item.image, { mode: 'cors' });
+      if (!res.ok) return false;
+      const blob = await res.blob();
+      const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+      const file = new File([blob], `${item.name.replace(/[^a-z0-9]+/gi, '_')}.${ext}`, { type: blob.type });
+      if (!navigator.canShare({ files: [file] })) return false;
+      const message = enquireBody(item, chosenSize);
+      try { await navigator.clipboard.writeText(message); } catch (_) { /* ignore */ }
+      await navigator.share({ files: [file], text: message, title: item.name });
+      return true;
+    } catch (_) {
+      // user cancelled or share failed — caller falls back to wa.me
+      return false;
+    }
   }
 
   function waIcon() {
@@ -213,7 +243,7 @@ const PAGE_SIZE = 15;
   const lightboxCap = document.getElementById('lightboxCaption');
   const lightboxClose = document.getElementById('lightboxClose');
 
-  gallery.addEventListener('click', e => {
+  gallery.addEventListener('click', async e => {
     // Like-pill — toggle a heart, persist in localStorage. Stop propagation so
     // the click doesn't also fire the card's data-action="zoom" handler.
     const likeBtn = e.target.closest('[data-action="like"]');
@@ -276,6 +306,12 @@ const PAGE_SIZE = 15;
         }
         if (hint) hint.textContent = 'Pick a size first';
         return;
+      }
+      // Tier 1: on mobile, push the real photo via the native share sheet; fall back to wa.me.
+      const isMobile = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+      if (isMobile && navigator.canShare) {
+        const shared = await tryShareWithImage(item, chosen || null);
+        if (shared) return;
       }
       window.open(whatsappLink(item, chosen || null), '_blank', 'noopener');
       return;
