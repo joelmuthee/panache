@@ -319,6 +319,20 @@ function relTime(iso) {
   return new Date(iso).toLocaleDateString('en-KE', { day: 'numeric', month: 'short' });
 }
 
+// Best-effort "added to the website" timestamp: explicit createdAt, else the IG
+// post date (takenAt; epoch-seconds or ISO), else the millis baked into a manual id.
+// Returns an ISO string, or null if nothing usable.
+function itemAddedAt(bag) {
+  if (bag.createdAt) return bag.createdAt;
+  if (bag.takenAt != null) {
+    const t = bag.takenAt;
+    if (typeof t === 'number') return new Date(t < 1e12 ? t * 1000 : t).toISOString();
+    return t;
+  }
+  const m = String(bag.id || '').match(/_(\d{10,})/);
+  return m ? new Date(parseInt(m[1], 10)).toISOString() : null;
+}
+
 // ====== IMAGES ======
 const imageInput = document.getElementById('imageInput');
 const imagePreview = document.getElementById('imagePreview');
@@ -1050,6 +1064,7 @@ function renderList() {
     const sold = totalUnitsSold(item);
     const stockSummary = Object.entries(item.stock || {}).map(([sz, q]) => `EU${sz}:${q}`).join(' · ') || 'No stock set';
     const checked = bulkSelected.has(item.id);
+    const addedIso = itemAddedAt(item);
     return `
     <div class="admin-card ${checked ? 'bulk-selected' : ''}">
       <label class="bulk-check" title="Select for bulk actions">
@@ -1061,6 +1076,7 @@ function renderList() {
         ${item.category ? `<div class="admin-card-cat-row"><span class="admin-card-cat">${escapeHtml(item.category)}</span></div>` : ''}
         <div class="admin-card-price">${fmtKsh(item.price)}<span class="admin-card-mobile-stock"> · ${units} in stock</span></div>
         <div class="admin-card-stock">${units} in stock · ${sold} sold | ${stockSummary}</div>
+        ${addedIso ? `<div class="admin-card-added" title="Added ${new Date(addedIso).toLocaleString('en-KE')}">Added ${relTime(addedIso)}</div>` : ''}
         <div class="admin-card-actions">
           <button onclick="editItem('${item.id}')">Edit</button>
           <button onclick="openSaleModal('${item.id}')" style="background:#f0faf4;border-color:#b0d8c0;color:#1a7a40;">Sell</button>

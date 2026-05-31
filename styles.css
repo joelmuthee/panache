@@ -797,6 +797,7 @@ img { max-width: 100%; display: block; }
 .admin-card { position: relative; }
 .admin-card.bulk-selected { outline: 2px solid var(--gold); }
 .admin-card-stock { font-size: 11px; color: var(--ink-faint); margin-top: 4px; line-height: 1.4; }
+.admin-card-added { font-size: 11px; color: var(--ink-faint); margin-top: 3px; }
 
 /* ===== MODALS ===== */
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 1000; display: none; align-items: center; justify-content: center; padding: 20px; }
