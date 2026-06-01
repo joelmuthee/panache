@@ -124,6 +124,27 @@ const PAGE_SIZE = 15;
     });
   }
 
+  // Per-item activity tracking. localStorage echo + worker beacon so the admin
+  // sees site-wide totals across all visitors/devices. Beacon target is the
+  // worker (settings.apiBase); skips silently if not configured.
+  const INSIGHTS_KEY = 'panache_insights';
+  function track(metric, key) {
+    if (!key && key !== 0) return;
+    try {
+      const data = JSON.parse(localStorage.getItem(INSIGHTS_KEY) || '{}');
+      data[metric] = data[metric] || {};
+      data[metric][key] = (data[metric][key] || 0) + 1;
+      localStorage.setItem(INSIGHTS_KEY, JSON.stringify(data));
+    } catch {}
+    try {
+      if (!settings.apiBase) return;
+      const payload = JSON.stringify({ metric, key });
+      const blob = new Blob([payload], { type: 'text/plain' });
+      if (navigator.sendBeacon) navigator.sendBeacon(`${settings.apiBase}/api/track`, blob);
+      else fetch(`${settings.apiBase}/api/track`, { method: 'POST', body: payload, keepalive: true }).catch(() => {});
+    } catch {}
+  }
+
   // ── RENDER ──
   function render() {
     const filtered = applyFilters();
@@ -250,6 +271,7 @@ const PAGE_SIZE = 15;
         likeBtn.classList.remove('liked');
       } else {
         liked.add(id);
+        track('itemWishlist', id);
         likeBtn.classList.add('liked', 'pop');
         setTimeout(() => likeBtn.classList.remove('pop'), 350);
       }
@@ -302,6 +324,7 @@ const PAGE_SIZE = 15;
       }
       // Open WhatsApp directly. whatsappLink appends the Instagram post URL so
       // WhatsApp still renders a preview card — no OS app-picker.
+      track('itemEnquiries', id);
       window.open(whatsappLink(item, chosen || null), '_blank', 'noopener');
       return;
     }
@@ -312,6 +335,7 @@ const PAGE_SIZE = 15;
     const id = wrap.dataset.id;
     const item = items.find(i => i.id === id);
     if (!item) return;
+    track('itemViews', id);
     lightboxImg.src = item.image;
     lightboxImg.alt = item.name;
     lightboxCap.textContent = `${item.name} · ${fmtPrice(item.price)}${item.sold ? ' · SOLD OUT' : ''}`;
