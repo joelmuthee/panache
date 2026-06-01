@@ -586,6 +586,10 @@ img { max-width: 100%; display: block; }
   font-weight: 700; margin-right: 8px;
 }
 .admin-nav a.admin-nav-cta:hover { background: var(--gold-light); }
+/* Scrollspy — the section you're currently viewing */
+.admin-nav a.active { background: var(--gold); color: var(--purple-deep); font-weight: 700; }
+.admin-nav a.active .admin-nav-count { background: rgba(0,0,0,0.18); color: var(--purple-deep); }
+.admin-nav a.admin-nav-cta.active { background: var(--gold-light); }
 .admin-nav-count {
   display: inline-flex; align-items: center; justify-content: center;
   background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.9);
