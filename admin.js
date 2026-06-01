@@ -6,6 +6,7 @@ const ALL_EU_SIZES = ['35','36','37','38','39','40','41','42','43','44','45'];
 
 let items = [];
 let settings = {};
+let clients = []; // manually-added clients (server-synced); sale buyers derived from sales[]
 let accountSuspended = false;
 let editingId = null;
 let stagedImage = null; // { base64, ext, dataUrl }
@@ -81,29 +82,55 @@ function syncLegacyFields(item) {
 }
 
 async function loadData() {
+  // Bootstrap apiBase from the local cache or committed seed so we know which
+  // worker to talk to, then load the AUTHORITATIVE copy from the server (KV).
+  let boot = null;
   const local = localStorage.getItem(STORAGE_KEY);
-  if (local) {
+  if (local) { try { boot = JSON.parse(local); } catch (e) {} }
+  if (!boot) { try { boot = await (await fetch('data.json')).json(); } catch (e) {} }
+  boot = boot || {};
+  settings = boot.settings || {};
+  items = (boot.items || []).map(migrateItem);
+  clients = Array.isArray(boot.clients) ? boot.clients : [];
+  // Server is the source of truth (KV). Authed fetch so we also receive the
+  // owner-only clients[]. Falls back to the bootstrap copy if the server is down.
+  if (settings.apiBase) {
     try {
-      const parsed = JSON.parse(local);
-      items = (parsed.items || []).map(migrateItem);
-      settings = parsed.settings || {};
-      return;
-    } catch (e) {}
-  }
-  try {
-    const res = await fetch('data.json');
-    const json = await res.json();
-    items = (json.items || []).map(migrateItem);
-    settings = json.settings || {};
-    saveData();
-  } catch (e) {
-    console.error('Failed to load data.json', e);
+      const res = await fetch(`${settings.apiBase}/api/items?_=${Date.now()}`, { headers: { Authorization: `Bearer ${ADMIN_TOKEN}` } });
+      if (res.ok) {
+        const json = await res.json();
+        items = (json.items || []).map(migrateItem);
+        settings = json.settings || settings;
+        clients = Array.isArray(json.clients) ? json.clients : [];
+        accountSuspended = !!json.suspended;
+        cacheLocal();
+      }
+    } catch (e) { console.error('Server load failed, using local copy', e); }
   }
 }
 
-function saveData() {
+function cacheLocal() {
   items.forEach(syncLegacyFields);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ items, settings }));
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ items, settings, clients })); } catch (e) {}
+}
+
+// Save = cache locally (instant) + publish to the server (KV) so edits sync
+// across devices and reach the public site. Best-effort publish; the local
+// cache always holds the latest and a sync failure is surfaced to the owner.
+function saveData() {
+  cacheLocal();
+  publishToServer();
+}
+async function publishToServer() {
+  if (!settings.apiBase) return;
+  try {
+    const res = await fetch(`${settings.apiBase}/api/bulk`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ADMIN_TOKEN}` },
+      body: JSON.stringify({ items, settings, clients }),
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); showToast('Saved on device, but server sync failed: ' + (e.error || res.status)); }
+  } catch (e) { showToast('Saved on device, but server sync failed (offline?).'); }
 }
 
 // Billing kill-switch — owner can't flip it (only the master token can), but

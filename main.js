@@ -25,13 +25,16 @@ const PAGE_SIZE = 15;
     } catch (e) {
       console.error('Failed to load data.json', e);
     }
-    // Billing kill-switch lives on the worker, not in data.json. Read it from
-    // /api/items so a billing suspend takes the public site offline even though
-    // the catalog itself is served from the static data.json.
+    // The server (KV) is the source of truth — the owner's admin publishes there.
+    // data.json above is just the bootstrap/offline fallback. Pull the LIVE
+    // catalog + settings + suspend flag from /api/items (buyer PII is stripped
+    // from this public response by the worker).
     if (settings.apiBase) {
       try {
         const res = await fetch(`${settings.apiBase}/api/items?_=${Date.now()}`);
         const json = await res.json();
+        if (Array.isArray(json.items)) items = json.items;
+        if (json.settings) settings = json.settings;
         suspended = !!json.suspended;
       } catch (e) {}
     }

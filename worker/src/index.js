@@ -489,6 +489,8 @@ export default {
           return nb;
         });
       }
+      // The manually-added clients list is owner-only CRM PII — never public.
+      if (!admin && data.clients) delete data.clients;
       return json(data, 200, admin ? { "Cache-Control": "no-store" } : { "Cache-Control": "public, max-age=10" });
     }
 
@@ -543,7 +545,9 @@ export default {
       let body;
       try { body = await request.json(); } catch { return json({ error: "invalid json" }, 400); }
       if (!Array.isArray(body.items)) return json({ error: "items must be an array" }, 400);
-      await putData(env, { items: body.items, settings: body.settings || {} });
+      const payload = { items: body.items, settings: body.settings || {} };
+      if (Array.isArray(body.clients)) payload.clients = body.clients;
+      await putData(env, payload);
       return json({ ok: true, count: body.items.length });
     }
 
