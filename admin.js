@@ -1627,6 +1627,211 @@ async function commitIgSync() {
 }
 
 // ====== INIT ======
+// ====== CLIENTS (free CRM roster) ======
+// Buyers from items[].sales[] + manually-added clients[], deduped by phone.
+// Writes go through saveData() (panache's publish-on-save), not a fetch-merge.
+let clientsQuery = '';
+let clientsSort = 'recent';
+function clientsLedger() {
+  const map = new Map();
+  for (const it of items) {
+    for (const s of (it.sales || [])) {
+      if (!s || !s.buyerPhone) continue;
+      const phone = String(s.buyerPhone).replace(/[^0-9]/g, '');
+      if (phone.length < 9) continue;
+      const at = new Date(s.soldAt || 0).getTime();
+      const amount = Number(s.salePrice || it.price || 0) * (Number(s.qty) || 1);
+      let c = map.get(phone);
+      if (!c) { c = { phone, name: '', purchases: [], spend: 0, lastAt: 0 }; map.set(phone, c); }
+      c.purchases.push({ bagName: it.name, size: s.size || '', qty: Number(s.qty) || 1, amount, at: s.soldAt });
+      c.spend += amount;
+      if (at >= c.lastAt) { c.lastAt = at; if (s.buyerName) c.name = s.buyerName; }
+      else if (!c.name && s.buyerName) c.name = s.buyerName;
+    }
+  }
+  for (const mc of (clients || [])) {
+    if (!mc || !mc.phone) continue;
+    const phone = String(mc.phone).replace(/[^0-9]/g, '');
+    if (phone.length < 9) continue;
+    let c = map.get(phone);
+    if (!c) { c = { phone, name: '', purchases: [], spend: 0, lastAt: 0 }; map.set(phone, c); }
+    c.manualId = mc.id;
+    if (mc.note) c.note = mc.note;
+    if (!c.name && mc.name) c.name = mc.name;
+    if (mc.createdAt) c.addedAt = mc.createdAt;
+  }
+  return [...map.values()];
+}
+function clientWaPhone(p) {
+  let d = String(p).replace(/[^0-9]/g, '');
+  if (d.startsWith('0')) d = '254' + d.slice(1);
+  else if (d.length === 9) d = '254' + d;
+  return d;
+}
+function renderClients() {
+  const listEl = document.getElementById('clientsList');
+  if (!listEl) return;
+  const ledger = clientsLedger();
+  const totalSpend = ledger.reduce((s, c) => s + c.spend, 0);
+  const repeat = ledger.filter(c => c.purchases.length >= 2).length;
+  const avg = ledger.length ? Math.round(totalSpend / ledger.length) : 0;
+  const nav = document.getElementById('navClientsCount'); if (nav) nav.textContent = ledger.length || '';
+  const kpi = document.getElementById('clientsKpiGrid');
+  if (kpi) kpi.innerHTML = `
+    <div class="inv-kpi"><div class="inv-kpi-label">Clients</div><div class="inv-kpi-val">${ledger.length}</div><div class="inv-kpi-sub">${repeat} repeat buyer${repeat === 1 ? '' : 's'}</div></div>
+    <div class="inv-kpi success"><div class="inv-kpi-label">Total spent</div><div class="inv-kpi-val">${fmtKsh(totalSpend)}</div><div class="inv-kpi-sub">across all clients</div></div>
+    <div class="inv-kpi"><div class="inv-kpi-label">Avg per client</div><div class="inv-kpi-val">${fmtKsh(avg)}</div><div class="inv-kpi-sub">lifetime value</div></div>
+    <div class="inv-kpi"><div class="inv-kpi-label">Repeat rate</div><div class="inv-kpi-val">${ledger.length ? Math.round(repeat / ledger.length * 100) : 0}%</div><div class="inv-kpi-sub">bought 2+ times</div></div>
+  `;
+  if (!ledger.length) {
+    listEl.innerHTML = '<p style="font-size:13px;color:#999;padding:14px;">No clients yet. Record a sale with a buyer, or use + Add client.</p>';
+    return;
+  }
+  const q = clientsQuery.toLowerCase();
+  const rows = ledger
+    .filter(c => !q || (c.name || '').toLowerCase().includes(q) || c.phone.includes(q))
+    .sort((a, b) =>
+      clientsSort === 'spend' ? b.spend - a.spend :
+      clientsSort === 'purchases' ? b.purchases.length - a.purchases.length :
+      b.lastAt - a.lastAt);
+  if (!rows.length) { listEl.innerHTML = '<p style="font-size:13px;color:#999;padding:14px;">No clients match your search.</p>'; return; }
+  listEl.innerHTML = rows.map(c => {
+    const its = c.purchases.slice()
+      .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
+      .map(p => `<span class="client-item">${escapeHtml(p.bagName)}${p.size ? ' · EU ' + escapeHtml(p.size) : ''} × ${p.qty} · ${fmtKsh(p.amount)}</span>`).join('');
+    const has = c.purchases.length;
+    const when = has ? `last ${relTime(new Date(c.lastAt).toISOString())}`
+                     : (c.addedAt ? `added ${relTime(c.addedAt)}` : 'no purchases yet');
+    const manualTag = c.manualId ? '<span class="client-tag">Added manually</span>' : '';
+    const noteLine = c.note ? `<div class="client-note">${escapeHtml(c.note)}</div>` : '';
+    const removeBtn = c.manualId ? `<button class="btn-admin danger" onclick="removeClient('${c.manualId}')">Remove</button>` : '';
+    return `
+      <div class="client-row">
+        <div class="client-row-main">
+          <div class="client-row-name">${escapeHtml(c.name || 'Unnamed buyer')}${manualTag}</div>
+          <div class="client-row-sub">${escapeHtml(c.phone)} · ${has} purchase${has === 1 ? '' : 's'} · ${fmtKsh(c.spend)} spent · ${when}</div>
+          ${noteLine}
+          <div class="client-items">${its}</div>
+        </div>
+        <div class="client-row-actions">
+          <button class="btn-admin gold" onclick="clientMessage('${c.phone}')">WhatsApp</button>
+          ${removeBtn}
+        </div>
+      </div>`;
+  }).join('');
+}
+window.clientMessage = phone => {
+  const c = clientsLedger().find(x => x.phone === phone);
+  const first = (c && c.name ? c.name : 'there').split(' ')[0];
+  const msg = `Hi ${first}! Thanks for shopping with The Panache. Fresh pieces just landed. Want me to send you what's new?`;
+  window.open(`https://wa.me/${clientWaPhone(phone)}?text=${encodeURIComponent(msg)}`, '_blank');
+};
+// "Item bought" autocomplete: type → tappable in-stock items → pick to record a sale.
+let acItemId = '';
+function acRenderResults(q) {
+  const box = document.getElementById('addClientItemResults');
+  const query = (q || '').toLowerCase();
+  if (!query) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  const matches = items.filter(it => (it.name || '').toLowerCase().includes(query)).slice(0, 12);
+  box.innerHTML = matches.length
+    ? matches.map(it => {
+        const units = Object.values(it.stock || {}).reduce((s, n) => s + (Number(n) || 0), 0);
+        return `<button type="button" class="client-item-opt" data-id="${it.id}">${escapeHtml(it.name)}<span>${units} in stock</span></button>`;
+      }).join('')
+    : '<div class="client-item-empty">No items match.</div>';
+  box.style.display = '';
+}
+function acSelectItem(id) {
+  const it = items.find(x => x.id === id);
+  if (!it) return;
+  acItemId = id;
+  document.getElementById('addClientItemSearch').value = it.name;
+  document.getElementById('addClientItemResults').style.display = 'none';
+  const sizeSel = document.getElementById('addClientSize');
+  sizeSel.innerHTML = '';
+  const inStock = Object.entries(it.stock || {}).filter(([, q]) => q > 0);
+  if (inStock.length) {
+    inStock.forEach(([sz, q]) => { const o = document.createElement('option'); o.value = sz; o.textContent = `EU ${sz} (${q} in stock)`; sizeSel.appendChild(o); });
+  } else {
+    const o = document.createElement('option'); o.value = 'One size'; o.textContent = 'One size'; sizeSel.appendChild(o);
+  }
+  document.getElementById('addClientQty').value = 1;
+  document.getElementById('addClientPrice').value = it.price || 0;
+  document.getElementById('addClientChosen').innerHTML = `Recording a sale for <strong>${escapeHtml(it.name)}</strong> · <button type="button" id="addClientClearItem">clear</button>`;
+  document.getElementById('addClientChosen').style.display = '';
+  document.getElementById('addClientSaleFields').style.display = '';
+}
+function acClearItem() {
+  acItemId = '';
+  document.getElementById('addClientItemSearch').value = '';
+  document.getElementById('addClientItemResults').style.display = 'none';
+  document.getElementById('addClientChosen').style.display = 'none';
+  document.getElementById('addClientSaleFields').style.display = 'none';
+}
+function openAddClient() {
+  document.getElementById('addClientName').value = '';
+  document.getElementById('addClientPhone').value = '';
+  document.getElementById('addClientNote').value = '';
+  acClearItem();
+  document.getElementById('addClientModal').style.display = 'flex';
+  document.getElementById('addClientName').focus();
+}
+function closeAddClient() { document.getElementById('addClientModal').style.display = 'none'; }
+document.getElementById('clientsAddBtn')?.addEventListener('click', openAddClient);
+document.getElementById('addClientCancelBtn')?.addEventListener('click', closeAddClient);
+document.getElementById('addClientModal')?.addEventListener('click', e => { if (e.target.id === 'addClientModal') closeAddClient(); });
+document.getElementById('addClientItemSearch')?.addEventListener('input', e => {
+  acItemId = '';
+  document.getElementById('addClientChosen').style.display = 'none';
+  document.getElementById('addClientSaleFields').style.display = 'none';
+  acRenderResults(e.target.value.trim());
+});
+document.getElementById('addClientItemResults')?.addEventListener('click', e => {
+  const opt = e.target.closest('.client-item-opt');
+  if (opt) acSelectItem(opt.dataset.id);
+});
+document.getElementById('addClientChosen')?.addEventListener('click', e => {
+  if (e.target.id === 'addClientClearItem') acClearItem();
+});
+document.getElementById('addClientSaveBtn')?.addEventListener('click', () => {
+  const name = document.getElementById('addClientName').value.trim();
+  const phone = document.getElementById('addClientPhone').value.trim().replace(/[^0-9+]/g, '');
+  const note = document.getElementById('addClientNote').value.trim();
+  if (!name) { showToast('Enter a name.'); return; }
+  if (phone.replace(/[^0-9]/g, '').length < 9) { showToast('Enter a valid phone number.'); return; }
+  const itemId = acItemId;
+  if (!Array.isArray(clients)) clients = [];
+  const norm = phone.replace(/[^0-9]/g, '');
+  const existing = clients.find(c => String(c.phone).replace(/[^0-9]/g, '') === norm);
+  if (existing) { existing.name = name; existing.note = note; }
+  else clients.push({ id: 'c_' + Date.now(), name, phone, note, createdAt: new Date().toISOString() });
+  if (itemId) {
+    const it = items.find(x => x.id === itemId);
+    if (it) {
+      const size = document.getElementById('addClientSize').value;
+      const qty = parseInt(document.getElementById('addClientQty').value, 10) || 1;
+      const salePrice = parseInt(document.getElementById('addClientPrice').value, 10) || it.price;
+      if (it.stock && it.stock[size] !== undefined) it.stock[size] = Math.max(0, it.stock[size] - qty);
+      if (!it.sales) it.sales = [];
+      it.sales.push({ size, qty, salePrice, buyerName: name, buyerPhone: phone, notes: note, soldAt: new Date().toISOString() });
+    }
+  }
+  saveData();
+  closeAddClient();
+  renderList(); renderDashboard(); renderInventory(); renderClients();
+  showToast(itemId ? 'Client saved + sale recorded.' : 'Client saved.');
+});
+window.removeClient = async (id) => {
+  if (!await confirmAction('Remove this client from your list? Their past sales (if any) stay in your records.', 'Remove')) return;
+  clients = (clients || []).filter(c => c.id !== id);
+  saveData();
+  renderClients();
+  showToast('Client removed.');
+};
+document.getElementById('clientsSearch')?.addEventListener('input', e => { clientsQuery = e.target.value.trim(); renderClients(); });
+document.getElementById('clientsSort')?.addEventListener('change', e => { clientsSort = e.target.value; renderClients(); });
+// "NEW" badge on the Clients nav link — kept permanently visible (no auto-dismiss).
+
 async function init() {
   await loadData();
   await loadSuspendedFlag();
@@ -1639,6 +1844,7 @@ async function init() {
   renderBroadcastRecipients();
   renderBroadcastPreview();
   renderInsights();
+  renderClients();
   renderTrash();
 }
 
