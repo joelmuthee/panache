@@ -835,6 +835,7 @@ function openSaleModal(id) {
   document.getElementById('buyerName').value = '';
   document.getElementById('buyerPhone').value = '';
   document.getElementById('buyerNotes').value = '';
+  document.querySelectorAll('#saleModalPay .pos-pay-btn').forEach(b => b.classList.toggle('active', b.dataset.pay === 'cash'));
   saleModal.style.display = 'flex';
   document.getElementById('buyerName').focus();
 }
@@ -847,17 +848,21 @@ document.getElementById('saleSaveBtn').addEventListener('click', () => {
   const size = document.getElementById('saleSizeInput').value;
   const qty = parseInt(document.getElementById('saleQtyInput').value, 10) || 1;
   const salePrice = parseInt(document.getElementById('salePriceInput').value, 10) || item.price;
+  const payMethod = document.querySelector('#saleModalPay .pos-pay-btn.active')?.dataset.pay || 'cash';
+  const bName = document.getElementById('buyerName').value.trim();
+  const bPhone = document.getElementById('buyerPhone').value.trim();
+  const soldAt = new Date().toISOString();
 
   if (item.stock && item.stock[size] !== undefined) {
     item.stock[size] = Math.max(0, item.stock[size] - qty);
   }
   if (!item.sales) item.sales = [];
   item.sales.push({
-    size, qty, salePrice,
-    buyerName: document.getElementById('buyerName').value.trim(),
-    buyerPhone: document.getElementById('buyerPhone').value.trim(),
+    size, qty, salePrice, paymentMethod: payMethod, channel: 'shop',
+    buyerName: bName,
+    buyerPhone: bPhone,
     notes: document.getElementById('buyerNotes').value.trim(),
-    soldAt: new Date().toISOString(),
+    soldAt,
   });
 
   closeSaleModal();
@@ -866,9 +871,16 @@ document.getElementById('saleSaveBtn').addEventListener('click', () => {
   renderDashboard();
   renderInventory();
   showToast(`Sale recorded — ${qty}× EU ${size} sold.`);
+  lastPosSale = { name: item.name, size, qty, amount: salePrice, paymentMethod: payMethod, buyerName: bName, buyerPhone: bPhone, soldAt };
+  showPosReceipt(lastPosSale);
+  document.getElementById('posDash').scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 
 document.getElementById('saleCancelBtn').addEventListener('click', closeSaleModal);
+document.getElementById('saleModalPay')?.addEventListener('click', e => {
+  const b = e.target.closest('.pos-pay-btn'); if (!b) return;
+  document.querySelectorAll('#saleModalPay .pos-pay-btn').forEach(x => x.classList.toggle('active', x === b));
+});
 saleModal.addEventListener('click', e => { if (e.target === saleModal) closeSaleModal(); });
 
 // ====== EDIT / UNDO A RECORDED SALE ======
@@ -1010,6 +1022,23 @@ function renderDashboard() {
       <div class="kpi-count">${b.count} <span class="kpi-unit">pairs</span></div>
       <div class="kpi-revenue">${fmtKsh(b.revenue)}</div>
     </div>`).join('');
+
+  const splitEl = document.getElementById('posTodaySplit');
+  if (splitEl) {
+    const todayStart = startOfDay(now);
+    let cashT = 0, mpesaT = 0, soldToday = 0;
+    items.forEach(it => (it.sales || []).forEach(s => {
+      if (new Date(s.soldAt) >= todayStart) {
+        const amt = (Number(s.salePrice || it.price)) * (Number(s.qty) || 1);
+        soldToday += Number(s.qty) || 1;
+        if (s.paymentMethod === 'mpesa') mpesaT += amt; else cashT += amt;
+      }
+    }));
+    splitEl.innerHTML = `<span class="pos-today-label">Today's takings</span>`
+      + `<span class="pos-chip cash">💵 Cash ${fmtKsh(cashT)}</span>`
+      + `<span class="pos-chip mpesa">📱 M-Pesa ${fmtKsh(mpesaT)}</span>`
+      + `<span class="pos-chip total">${soldToday} sold</span>`;
+  }
 
   // Top categories
   const catUnits = {}, catRev = {};
@@ -1961,5 +1990,118 @@ function initNavScrollSpy() {
   window.addEventListener('resize', onScroll, { passive: true });
   update();
 }
+
+// ====== POS — SELL IN STORE (counter checkout) + RECEIPTS ======
+// Panache persists via saveData() (localStorage + /api/bulk), uses items[].
+let posItemId = '';
+let posPayMethod = 'cash';
+let lastPosSale = null;
+function posWaPhone(p) { let d = String(p || '').replace(/[^0-9]/g, ''); if (d.startsWith('0')) d = '254' + d.slice(1); else if (d.startsWith('7') || d.startsWith('1')) d = '254' + d; return d; }
+function posRenderResults(q) {
+  const box = document.getElementById('posItemResults');
+  const query = (q || '').toLowerCase();
+  if (!query) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  const matches = items.filter(b => (b.name || '').toLowerCase().includes(query)).slice(0, 12);
+  box.innerHTML = matches.length
+    ? matches.map(b => { const units = Object.values(b.stock || {}).reduce((s, n) => s + (Number(n) || 0), 0); const meta = Object.keys(b.stock || {}).length ? `${units} in stock` : fmtKsh(b.price); return `<button type="button" class="client-item-opt" data-id="${b.id}">${escapeHtml(b.name)}<span>${meta}</span></button>`; }).join('')
+    : '<div class="client-item-empty">No items match.</div>';
+  box.style.display = '';
+}
+function posSelectItem(id) {
+  const it = items.find(b => b.id === id); if (!it) return;
+  posItemId = id;
+  document.getElementById('posItemSearch').value = it.name;
+  document.getElementById('posItemResults').style.display = 'none';
+  const sizeSel = document.getElementById('posSize'); sizeSel.innerHTML = '';
+  const inStock = Object.entries(it.stock || {}).filter(([, q]) => q > 0);
+  if (inStock.length) inStock.forEach(([sz, q]) => { const o = document.createElement('option'); o.value = sz; o.textContent = `EU ${sz} (${q} in stock)`; sizeSel.appendChild(o); });
+  else { const o = document.createElement('option'); o.value = 'One size'; o.textContent = 'One size'; sizeSel.appendChild(o); }
+  document.getElementById('posQty').value = 1;
+  document.getElementById('posPrice').value = (it.salePrice > 0 && it.salePrice < it.price) ? it.salePrice : (it.price || '');
+  document.getElementById('posChosen').innerHTML = `Selling <strong>${escapeHtml(it.name)}</strong> · <button type="button" id="posClearItem">change</button>`;
+  document.getElementById('posChosen').style.display = '';
+  document.getElementById('posSaleFields').style.display = '';
+  document.getElementById('posReceiptPanel').style.display = 'none';
+}
+function posReset() {
+  posItemId = ''; posPayMethod = 'cash';
+  ['posItemSearch', 'posBuyerName', 'posBuyerPhone'].forEach(i => { const el = document.getElementById(i); if (el) el.value = ''; });
+  document.getElementById('posItemResults').style.display = 'none';
+  document.getElementById('posChosen').style.display = 'none';
+  document.getElementById('posSaleFields').style.display = 'none';
+  document.getElementById('posReceiptPanel').style.display = 'none';
+  document.getElementById('posCustomerFields').style.display = 'none';
+  document.querySelectorAll('#posPay .pos-pay-btn').forEach(b => b.classList.toggle('active', b.dataset.pay === 'cash'));
+}
+function posReceiptText(s) {
+  const total = s.amount * s.qty;
+  return [`*The Panache Store* receipt`, `${s.name} (EU ${s.size}) x${s.qty}`, `Total: ${fmtKsh(total)}. Paid by ${s.paymentMethod === 'mpesa' ? 'M-Pesa' : 'Cash'}.`, `Thank you for shopping with us!`].join('\n');
+}
+function showPosReceipt(s) {
+  document.getElementById('posSaleFields').style.display = 'none';
+  document.getElementById('posChosen').style.display = 'none';
+  document.getElementById('posItemSearch').value = '';
+  const total = s.amount * s.qty; const pay = s.paymentMethod === 'mpesa' ? 'M-Pesa' : 'Cash';
+  document.getElementById('posReceiptSummary').innerHTML = `<strong>${escapeHtml(s.name)}</strong> · EU ${escapeHtml(String(s.size))} · ${s.qty} pair(s)<br>${fmtKsh(total)} · paid by ${pay}`;
+  const wa = document.getElementById('posWaReceiptBtn');
+  if (s.buyerPhone && s.buyerPhone.replace(/[^0-9]/g, '').length >= 9) { wa.href = `https://wa.me/${posWaPhone(s.buyerPhone)}?text=${encodeURIComponent(posReceiptText(s))}`; wa.style.display = ''; }
+  else { wa.style.display = 'none'; }
+  document.getElementById('posReceiptPanel').style.display = '';
+}
+function posPrintReceipt() {
+  if (!lastPosSale) return;
+  const s = lastPosSale, total = s.amount * s.qty, d = new Date(s.soldAt);
+  document.getElementById('posReceiptPrint').innerHTML = `
+    <div class="rcpt">
+      <div class="rcpt-head">The Panache Store</div>
+      <div class="rcpt-sub">0734 737 373</div>
+      <hr>
+      <div class="rcpt-row"><span>${escapeHtml(s.name)}</span></div>
+      <div class="rcpt-row"><span>EU ${escapeHtml(String(s.size))} · ${s.qty} × ${fmtKsh(s.amount)}</span><span>${fmtKsh(total)}</span></div>
+      <hr>
+      <div class="rcpt-row rcpt-total"><span>TOTAL</span><span>${fmtKsh(total)}</span></div>
+      <div class="rcpt-row"><span>Paid by</span><span>${s.paymentMethod === 'mpesa' ? 'M-Pesa' : 'Cash'}</span></div>
+      <div class="rcpt-date">${d.toLocaleString('en-GB')}</div>
+      <div class="rcpt-foot">Thank you for shopping with us!</div>
+    </div>`;
+  window.print();
+}
+function recordPosSale() {
+  const targetId = posItemId;
+  if (!targetId) { showToast('Pick an item first.'); return; }
+  const it = items.find(x => x.id === targetId);
+  if (!it) { showToast('Item not found — refresh.'); return; }
+  const size = document.getElementById('posSize').value;
+  const qty = parseInt(document.getElementById('posQty').value, 10) || 1;
+  const priceRaw = parseInt(document.getElementById('posPrice').value, 10);
+  const amount = isNaN(priceRaw) ? (Number(it.price) || 0) : priceRaw;
+  const name = document.getElementById('posBuyerName').value.trim();
+  const phone = document.getElementById('posBuyerPhone').value.trim().replace(/[^0-9+]/g, '');
+  const soldAt = new Date().toISOString();
+  if (it.stock && it.stock[size] !== undefined) it.stock[size] = Math.max(0, it.stock[size] - qty);
+  if (!it.sales) it.sales = [];
+  it.sales.push({ size, qty, salePrice: amount, paymentMethod: posPayMethod, channel: 'shop', buyerName: name, buyerPhone: phone, notes: '', soldAt });
+  if (phone.replace(/[^0-9]/g, '').length >= 9) {
+    if (!Array.isArray(clients)) clients = [];
+    const norm = phone.replace(/[^0-9]/g, '');
+    const existing = clients.find(c => String(c.phone).replace(/[^0-9]/g, '') === norm);
+    if (existing) { if (name) existing.name = name; }
+    else clients.push({ id: 'c_' + Date.now(), name: name || '', phone, note: 'Walk-in (in-store)', createdAt: soldAt });
+  }
+  saveData();
+  renderList(); renderDashboard(); renderInventory(); if (typeof renderClients === 'function') renderClients();
+  lastPosSale = { name: it.name, size, qty, amount, paymentMethod: posPayMethod, buyerName: name, buyerPhone: phone, soldAt };
+  showPosReceipt(lastPosSale);
+  showToast(`Sold ${qty}× EU ${size} · ${fmtKsh(amount * qty)}`);
+}
+document.getElementById('posItemSearch')?.addEventListener('input', e => { posItemId = ''; document.getElementById('posSaleFields').style.display = 'none'; document.getElementById('posChosen').style.display = 'none'; posRenderResults(e.target.value.trim()); });
+document.getElementById('posItemResults')?.addEventListener('click', e => { const opt = e.target.closest('.client-item-opt'); if (opt) posSelectItem(opt.dataset.id); });
+document.getElementById('posChosen')?.addEventListener('click', e => { if (e.target.id === 'posClearItem') posReset(); });
+document.getElementById('posPay')?.addEventListener('click', e => { const b = e.target.closest('.pos-pay-btn'); if (!b) return; posPayMethod = b.dataset.pay; document.querySelectorAll('#posPay .pos-pay-btn').forEach(x => x.classList.toggle('active', x === b)); });
+document.getElementById('posAddCustomerToggle')?.addEventListener('click', () => { const f = document.getElementById('posCustomerFields'); f.style.display = f.style.display === 'none' ? '' : 'none'; });
+document.getElementById('posRecordBtn')?.addEventListener('click', recordPosSale);
+document.getElementById('posCancelBtn')?.addEventListener('click', posReset);
+document.getElementById('posNewSaleBtn')?.addEventListener('click', posReset);
+document.getElementById('posPrintReceiptBtn')?.addEventListener('click', posPrintReceipt);
 
 checkAuth();
