@@ -212,6 +212,9 @@ img { max-width: 100%; display: block; }
 .section-title { font-family: var(--serif); font-size: clamp(36px, 5vw, 56px); font-weight: 500; letter-spacing: -0.01em; color: var(--ink); }
 
 .filter-group { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+/* Category + Size sit side by side on web (stack on mobile via the rule below). */
+.filter-row { display: flex; gap: 32px; align-items: flex-start; flex-wrap: wrap; }
+.filter-row .filter-group { margin-bottom: 10px; }
 .filter-label { font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); min-width: 80px; flex-shrink: 0; }
 .filter-pills { display: flex; gap: 6px; flex-wrap: wrap; }
 .pill {
@@ -543,6 +546,7 @@ img { max-width: 100%; display: block; }
   .hero-cta .btn { width: 100%; text-align: center; padding: 16px 28px; }
   /* Filters: label above, pills scroll horizontally */
   .filters { padding: 36px 0 12px; }
+  .filter-row { flex-direction: column; gap: 0; }  /* stack Category + Size on mobile */
   .filter-group { flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
   .filter-pills { flex-wrap: wrap; overflow-x: visible; gap: 6px; }
   .filter-label { width: 100%; min-width: unset; font-size: 11px; margin-bottom: 2px; }
