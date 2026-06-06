@@ -23,6 +23,12 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
+/* Themed page scrollbar — gold thumb on the brand surface track. */
+html { scrollbar-width: thin; scrollbar-color: var(--gold) var(--surface); }
+html::-webkit-scrollbar { width: 12px; }
+html::-webkit-scrollbar-track { background: var(--surface); }
+html::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 8px; border: 3px solid var(--surface); }
+html::-webkit-scrollbar-thumb:hover { background: var(--gold-deep); }
 body { font-family: var(--sans); color: var(--ink); background: var(--bg); line-height: 1.55; -webkit-font-smoothing: antialiased; }
 a { color: inherit; text-decoration: none; }
 img { max-width: 100%; display: block; }
