@@ -1087,7 +1087,7 @@ img { max-width: 100%; display: block; }
 /* Category + size filter dropdowns (compact, replaces the static pill rows).
    Panache keeps its labeled .filter-group blocks, so each .filter-drop is a
    width-capped block rather than part of an inline row. */
-.filter-drop { max-width: 320px; }
+.filter-drop { width: 200px; max-width: 100%; }
 .filter-select { width: 100%; max-width: 100%; }
 
 /* Page-controlled dropdown so the open list shows a scroll cue (a native
