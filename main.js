@@ -12,6 +12,7 @@ const PAGE_SIZE = 15;
   let currentCat = 'all';
   let currentSize = 'all';
   let currentAvail = 'all';
+  let currentSort = 'default';
   let currentPage = 1;
   const selectedSizes = new Map(); // itemId → selected EU size string
 
@@ -151,6 +152,9 @@ const PAGE_SIZE = 15;
   // ── RENDER ──
   function render() {
     const filtered = applyFilters();
+    // Apply sort on top of filters. 'default' keeps the source feed order.
+    if (currentSort === 'priceAsc') filtered.sort((a, b) => (a.price || 0) - (b.price || 0));
+    else if (currentSort === 'priceDesc') filtered.sort((a, b) => (b.price || 0) - (a.price || 0));
     const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
     if (currentPage > totalPages) currentPage = totalPages;
 
@@ -253,6 +257,11 @@ const PAGE_SIZE = 15;
   wirePills('catPills', 'cat', v => currentCat = v);
   wirePills('sizePills', 'size', v => currentSize = v);
   wirePills('availPills', 'avail', v => currentAvail = v);
+  document.getElementById('sortSelect')?.addEventListener('change', e => {
+    currentSort = e.target.value;
+    currentPage = 1;
+    render();
+  });
 
   // ── LIGHTBOX ──
   const lightbox = document.getElementById('lightbox');
