@@ -69,7 +69,7 @@ const PAGE_SIZE = 16;
     const sizeHint = chosenSize ? ` (EU ${chosenSize})` : (item.sizes ? ` (sizes: ${item.sizes})` : '');
     return item.sold
       ? `Hi! I'm interested in the *${item.name}*${sizeHint} from The Panache Store. Is it coming back in stock? 🙏`
-      : `Hi! I'd like to enquire about the *${item.name}* (${fmtPrice(item.price)})${sizeHint} from The Panache Store.`;
+      : `Hi! I'd like to check availability of the *${item.name}* (${fmtPrice(item.price)})${sizeHint} from The Panache Store.`;
   }
 
   function whatsappLink(item, chosenSize) {
@@ -188,9 +188,8 @@ const PAGE_SIZE = 16;
             <span class="card-category">${escapeHtml(item.category)}</span>
           </div>
           <div class="card-actions">
-            <a class="btn-card" href="${item.postUrl}" target="_blank" rel="noopener">View post</a>
             <button class="btn-card primary ${item.sold ? 'sold-out' : ''}" data-action="enquire" data-id="${item.id}" type="button">
-              ${waIcon()}${item.sold ? 'Enquire (sold)' : 'Enquire'}
+              ${waIcon()}${item.sold ? 'Sold out · notify me' : 'Check availability'}
             </button>
           </div>
         </div>

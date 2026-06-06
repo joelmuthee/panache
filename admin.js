@@ -593,7 +593,7 @@ function generateDescription(name, cat) {
   ];
   const closes = [
     `Shop at Piedmont Plaza, Ngong Road or order countrywide via WhatsApp.`,
-    `Pick up in Nairobi or we deliver. Tap Enquire to order.`,
+    `Pick up in Nairobi or we deliver. Tap Check availability to order.`,
     `Nationwide delivery available. Enquire on WhatsApp to place your order.`,
   ];
   return [
