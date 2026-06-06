@@ -847,7 +847,7 @@ function openSaleModal(id) {
   document.getElementById('buyerName').value = '';
   document.getElementById('buyerPhone').value = '';
   document.getElementById('buyerNotes').value = '';
-  document.querySelectorAll('#saleModalPay .pos-pay-btn').forEach(b => b.classList.toggle('active', b.dataset.pay === 'cash'));
+  document.querySelectorAll('#saleModalPay .pos-pay-btn').forEach(b => b.classList.toggle('active', b.dataset.pay === 'mpesa'));
   saleModal.style.display = 'flex';
   document.getElementById('buyerName').focus();
 }
@@ -860,7 +860,7 @@ document.getElementById('saleSaveBtn').addEventListener('click', () => {
   const size = document.getElementById('saleSizeInput').value;
   const qty = parseInt(document.getElementById('saleQtyInput').value, 10) || 1;
   const salePrice = parseInt(document.getElementById('salePriceInput').value, 10) || item.price;
-  const payMethod = document.querySelector('#saleModalPay .pos-pay-btn.active')?.dataset.pay || 'cash';
+  const payMethod = document.querySelector('#saleModalPay .pos-pay-btn.active')?.dataset.pay || 'mpesa';
   const bName = document.getElementById('buyerName').value.trim();
   const bPhone = document.getElementById('buyerPhone').value.trim();
   const soldAt = new Date().toISOString();
@@ -1452,11 +1452,10 @@ function buildBroadcastMessage(recipientName) {
   const subject = (document.getElementById('broadcastSubject')?.value || '').trim();
   const selectedItems = broadcastSelectedIds.map(id => items.find(b => b.id === id)).filter(Boolean);
   const itemsBlock = selectedItems.length
-    ? '\n\n' + selectedItems.map((b, i) => `${i + 1}. *${b.name}*${b.price > 0 ? ' — ' + fmtKsh(b.price) : ''}`).join('\n')
+    ? '\n\n' + selectedItems.map((b, i) => `${i + 1}. *${b.name}*${b.price > 0 ? ' · ' + fmtKsh(b.price) : ''}`).join('\n')
     : '';
-  const storeUrl = 'https://thepanache.essenceautomations.com';
   const greet = recipientName ? `Hi ${recipientName.split(' ')[0]}! ` : 'Hi! ';
-  return `${greet}It's The Panache Store — ${subject || 'new ALDO styles just landed'}.${itemsBlock}\n\nBrowse the full collection: ${storeUrl}\n\nReply here to enquire or place an order. 💜`;
+  return `${greet}It's The Panache Store. ${subject || 'New ALDO styles just landed'}.${itemsBlock}\n\nBrowse the full collection: ${SHOP_URL}\n\nReply here to enquire or place an order. 💜`;
 }
 
 function renderBroadcastPreview() {
@@ -1485,7 +1484,7 @@ document.getElementById('broadcastStartBtn')?.addEventListener('click', async ()
     }
     const r = recipients[i++];
     const msg = buildBroadcastMessage(r.name);
-    window.open(`https://wa.me/${r.phone}?text=${encodeURIComponent(msg)}`, '_blank');
+    window.open(`https://wa.me/${clientWaPhone(r.phone)}?text=${encodeURIComponent(msg)}`, '_blank');
     document.getElementById('broadcastStatus').textContent = `Opening ${i} of ${recipients.length}...`;
     setTimeout(next, 700);
   }
@@ -1606,6 +1605,7 @@ const PANACHE_CATEGORIES = ['Heels', 'Flats', 'Sandals', 'Boots', 'Sneakers', 'L
 // Worker token. Base64'd so it doesn't sit raw in the repo. Decode at runtime.
 // Worker has the matching ADMIN_TOKEN secret set via `wrangler secret put`.
 const ADMIN_TOKEN = atob('YjMwMzQzMzdmYzA3NjUwMGEwMWM2YzAyMzczMTA0M2MwZDAzN2JmMmYxYjNlYWI4NWM4ZDMwZmNiOWViZDAyMw==');
+const SHOP_URL = 'https://thepanache.essenceautomations.com'; // public storefront — used in WhatsApp messages to clients
 
 let igSyncCandidates = [];
 
@@ -1896,7 +1896,7 @@ function renderClients() {
 window.clientMessage = phone => {
   const c = clientsLedger().find(x => x.phone === phone);
   const first = (c && c.name ? c.name : 'there').split(' ')[0];
-  const msg = `Hi ${first}! Thanks for shopping with The Panache. Fresh pieces just landed. Want me to send you what's new?`;
+  const msg = `Hi ${first}! Thanks for shopping with The Panache. Fresh pieces just landed. Browse what's new here: ${SHOP_URL}\n\nReply here and I'll help you order. 💜`;
   window.open(`https://wa.me/${clientWaPhone(phone)}?text=${encodeURIComponent(msg)}`, '_blank');
 };
 // "Item bought" autocomplete: type → tappable in-stock items → pick to record a sale.
@@ -2058,7 +2058,7 @@ function initNavScrollSpy() {
 // ====== POS — SELL IN STORE (counter checkout) + RECEIPTS ======
 // Panache persists via saveData() (localStorage + /api/bulk), uses items[].
 let posItemId = '';
-let posPayMethod = 'cash';
+let posPayMethod = 'mpesa';
 let lastPosSale = null;
 function posWaPhone(p) { let d = String(p || '').replace(/[^0-9]/g, ''); if (d.startsWith('0')) d = '254' + d.slice(1); else if (d.startsWith('7') || d.startsWith('1')) d = '254' + d; return d; }
 function posRenderResults(q) {
@@ -2088,14 +2088,14 @@ function posSelectItem(id) {
   document.getElementById('posReceiptPanel').style.display = 'none';
 }
 function posReset() {
-  posItemId = ''; posPayMethod = 'cash';
+  posItemId = ''; posPayMethod = 'mpesa';
   ['posItemSearch', 'posBuyerName', 'posBuyerPhone'].forEach(i => { const el = document.getElementById(i); if (el) el.value = ''; });
   document.getElementById('posItemResults').style.display = 'none';
   document.getElementById('posChosen').style.display = 'none';
   document.getElementById('posSaleFields').style.display = 'none';
   document.getElementById('posReceiptPanel').style.display = 'none';
   document.getElementById('posCustomerFields').style.display = '';
-  document.querySelectorAll('#posPay .pos-pay-btn').forEach(b => b.classList.toggle('active', b.dataset.pay === 'cash'));
+  document.querySelectorAll('#posPay .pos-pay-btn').forEach(b => b.classList.toggle('active', b.dataset.pay === 'mpesa'));
 }
 function posReceiptText(s) {
   const total = s.amount * s.qty;
@@ -2157,7 +2157,7 @@ function recordPosSale() {
     const norm = phone.replace(/[^0-9]/g, '');
     const existing = clients.find(c => String(c.phone).replace(/[^0-9]/g, '') === norm);
     if (existing) { if (name) existing.name = name; }
-    else clients.push({ id: 'c_' + Date.now(), name: name || '', phone, note: 'Walk-in (in-store)', createdAt: soldAt });
+    else clients.push({ id: 'c_' + Date.now(), name: name || '', phone, note: '', createdAt: soldAt });
   }
   saveData();
   renderList(); renderDashboard(); renderInventory(); if (typeof renderClients === 'function') renderClients();
@@ -2291,7 +2291,7 @@ function openPayDebt(phone) {
   document.getElementById('payDebtName').textContent = c.name || c.phone;
   document.getElementById('payDebtOwed').textContent = fmtKsh(c.owed);
   document.getElementById('payDebtAmount').value = c.owed;
-  document.querySelectorAll('#payDebtPay .pos-pay-btn').forEach(b => b.classList.toggle('active', b.dataset.pay === 'cash'));
+  document.querySelectorAll('#payDebtPay .pos-pay-btn').forEach(b => b.classList.toggle('active', b.dataset.pay === 'mpesa'));
   document.getElementById('payDebtModal').style.display = 'flex';
   document.getElementById('payDebtAmount').focus();
 }
@@ -2306,7 +2306,7 @@ document.getElementById('payDebtPay')?.addEventListener('click', e => {
 document.getElementById('payDebtSaveBtn')?.addEventListener('click', async () => {
   const phone = payingPhone;
   const amount = parseInt(document.getElementById('payDebtAmount').value, 10);
-  const method = document.querySelector('#payDebtPay .pos-pay-btn.active')?.dataset.pay || 'cash';
+  const method = document.querySelector('#payDebtPay .pos-pay-btn.active')?.dataset.pay || 'mpesa';
   if (!phone) return;
   if (isNaN(amount) || amount <= 0) { showToast('Enter how much they paid.'); return; }
   closePayDebt();
