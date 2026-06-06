@@ -8,6 +8,7 @@ let items = [];
 let settings = {};
 let clients = []; // manually-added clients (server-synced); sale buyers derived from sales[]
 let accountSuspended = false;
+const SUSPENDED_MSG = 'Your store is offline. Contact Essence Automations to restore it before making changes.';
 let editingId = null;
 let stagedImage = null; // { base64, ext, dataUrl }
 let stagedExtras = [];
@@ -122,6 +123,7 @@ function saveData() {
   publishToServer();
 }
 async function publishToServer() {
+  if (accountSuspended) throw new Error(SUSPENDED_MSG);
   if (!settings.apiBase) return;
   try {
     const res = await fetch(`${settings.apiBase}/api/bulk`, {
@@ -424,6 +426,7 @@ function renderExtraImagesPreview() {
 document.getElementById('igQuickBtn')?.addEventListener('click', async () => {
   const url = document.getElementById('igQuickInput').value.trim();
   const status = document.getElementById('igQuickStatus');
+  if (accountSuspended) { status.textContent = SUSPENDED_MSG; status.className = 'ig-quick-status err'; return; }
   if (!url) { status.textContent = 'Paste an Instagram URL first.'; status.className = 'ig-quick-status err'; return; }
   if (!/instagram\.com\/(?:p|reel|tv)\//i.test(url)) { status.textContent = 'That doesn\'t look like an IG post URL.'; status.className = 'ig-quick-status err'; return; }
 
@@ -1520,6 +1523,7 @@ async function renderInsights() {
 }
 
 document.getElementById('insightsResetBtn')?.addEventListener('click', async () => {
+  if (accountSuspended) { showToast(SUSPENDED_MSG); return; }
   if (!await confirmAction('Reset Insights for the whole shop? This clears the site-wide totals from every device and cannot be undone.', 'Reset')) return;
   try {
     if (settings.apiBase) await fetch(`${settings.apiBase}/api/insights-reset`, { method: 'POST', headers: { Authorization: `Bearer ${ADMIN_TOKEN}` } });
@@ -1572,6 +1576,7 @@ igSyncCancelBtn?.addEventListener('click', resetIgSync);
 igSyncCommitBtn?.addEventListener('click', commitIgSync);
 
 async function checkForNewIgPosts() {
+  if (accountSuspended) { igSyncStatus.textContent = SUSPENDED_MSG; return; }
   const apiBase = settings.apiBase || '';
   if (!apiBase) {
     igSyncStatus.textContent = '✗ settings.apiBase is not set in data.json — add it before using sync.';
@@ -1664,6 +1669,7 @@ async function igStageImage(apiBase, imgUrl) {
 }
 
 async function commitIgSync() {
+  if (accountSuspended) { showToast(SUSPENDED_MSG); return; }
   const apiBase = settings.apiBase || '';
   if (!apiBase) { showToast('settings.apiBase missing.'); return; }
   const picks = [];

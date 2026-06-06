@@ -39,6 +39,14 @@ const isMaster = (req, env) => {
   return env.MASTER_TOKEN && auth.slice(7).trim() === env.MASTER_TOKEN.trim();
 };
 
+const suspendBlock = async (req, env) => {
+  if (isMaster(req, env)) return null;
+  if ((await env.ITEMS.get("suspended")) === "1") {
+    return json({ error: "account suspended; contact billing to restore the store" }, 403);
+  }
+  return null;
+};
+
 // Decode HTML entities IG slathers across og:description and the embed Caption
 // div. Named entities + decimal (&#064;) + hex (&#x40;). Without this, captions
 // contain literal "&#064;" instead of "@", which breaks admin's @<price> parser.
@@ -535,6 +543,7 @@ export default {
 
     if (request.method === "POST" && path === "/api/insights-reset") {
       if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      const blocked = await suspendBlock(request, env); if (blocked) return blocked;
       await env.ITEMS.put("stats", JSON.stringify({ _lastUpdated: new Date().toISOString() }));
       return json({ ok: true });
     }
@@ -542,6 +551,7 @@ export default {
     // POST /api/bulk — replace entire catalog
     if (request.method === "POST" && path === "/api/bulk") {
       if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      const blocked = await suspendBlock(request, env); if (blocked) return blocked;
       let body;
       try { body = await request.json(); } catch { return json({ error: "invalid json" }, 400); }
       if (!Array.isArray(body.items)) return json({ error: "items must be an array" }, 400);
@@ -554,6 +564,7 @@ export default {
     // POST /api/items — create
     if (request.method === "POST" && path === "/api/items") {
       if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      const blocked = await suspendBlock(request, env); if (blocked) return blocked;
       let item;
       try { item = await request.json(); } catch { return json({ error: "invalid json" }, 400); }
       if (!item.name || item.price == null) return json({ error: "name and price required" }, 400);
@@ -571,6 +582,7 @@ export default {
 
       if (request.method === "PATCH") {
         if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+        const blocked = await suspendBlock(request, env); if (blocked) return blocked;
         let patch;
         try { patch = await request.json(); } catch { return json({ error: "invalid json" }, 400); }
         const data = await getData(env);
@@ -583,6 +595,7 @@ export default {
 
       if (request.method === "DELETE") {
         if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+        const blocked = await suspendBlock(request, env); if (blocked) return blocked;
         const data = await getData(env);
         const before = data.items.length;
         data.items = data.items.filter(i => i.id !== id);

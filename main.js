@@ -364,11 +364,43 @@ const PAGE_SIZE = 15;
   // When suspended, replace the whole page with a neutral "offline" notice.
   function showSuspended() {
     document.documentElement.style.overflow = 'hidden';
+    const shopName = settings.businessName || 'The Panache Store';
+    document.title = shopName + ' · Offline';
+
+    const tagline = settings.tagline || 'Step into style.';
+    const igHandle = (settings.instagram || 'thepanachekenya').replace(/^@/, '');
+    const igLink = igHandle ? ('https://www.instagram.com/' + igHandle + '/') : '';
+    const logoUrl = 'images/logo.jpg';
+
+    const IG_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>';
+
+    const css = ('@keyframes pnSusFade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}'
+      + '#suspendedOverlay{position:fixed;inset:0;z-index:99999;background:radial-gradient(ellipse at top,#2e0a4a 0%,#0d0118 65%);color:#f0e8ff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 24px;font-family:Inter,system-ui,-apple-system,sans-serif;animation:pnSusFade 0.65s ease both;}'
+      + '#suspendedOverlay .pn-logo{width:140px;height:140px;border-radius:50%;object-fit:cover;background:#fff;border:2px solid #f5a820;box-shadow:0 0 36px rgba(245,168,32,0.4),inset 0 0 0 1px rgba(255,255,255,0.04);margin-bottom:26px;}'
+      + '#suspendedOverlay .pn-name{font-family:\'Cormorant Garamond\',Georgia,serif;font-size:34px;color:#ffedb0;letter-spacing:2.5px;font-weight:500;line-height:1;margin-bottom:8px;}'
+      + '#suspendedOverlay .pn-tag{font-size:12px;color:#f5a820;letter-spacing:2px;text-transform:uppercase;margin-bottom:30px;opacity:0.9;}'
+      + '#suspendedOverlay .pn-rule{width:54px;height:1px;background:linear-gradient(90deg,transparent,#f5a820,transparent);margin-bottom:30px;}'
+      + '#suspendedOverlay .pn-head{font-family:\'Cormorant Garamond\',Georgia,serif;font-weight:500;font-size:clamp(30px,5vw,44px);margin:0 0 16px;color:#f0e8ff;line-height:1.15;}'
+      + '#suspendedOverlay .pn-body{font-size:16px;max-width:440px;line-height:1.65;opacity:0.78;margin:0 0 34px;}'
+      + '#suspendedOverlay .pn-ig{display:inline-flex;align-items:center;gap:10px;background:#f5a820;color:#3a0e58;padding:14px 30px;border-radius:999px;text-decoration:none;font-weight:600;font-size:15px;letter-spacing:0.3px;box-shadow:0 6px 24px rgba(245,168,32,0.3);transition:transform 0.2s ease,box-shadow 0.2s ease,background 0.2s ease;}'
+      + '#suspendedOverlay .pn-ig:hover{background:#ffedb0;transform:translateY(-1px);box-shadow:0 8px 28px rgba(245,168,32,0.42);}'
+      + '@media (max-width:480px){#suspendedOverlay .pn-logo{width:118px;height:118px;margin-bottom:22px;}#suspendedOverlay .pn-name{font-size:28px;letter-spacing:2px;}#suspendedOverlay .pn-tag{font-size:11px;margin-bottom:24px;}}'
+    );
+    const styleTag = document.createElement('style');
+    styleTag.textContent = css;
+    document.head.appendChild(styleTag);
+
     const o = document.createElement('div');
     o.id = 'suspendedOverlay';
-    o.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#16110c;color:#eee;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px;font-family:system-ui,-apple-system,sans-serif;';
-    o.innerHTML = '<h1 style="font-weight:600;font-size:clamp(26px,5vw,40px);margin:0 0 14px;">This page is temporarily unavailable</h1>'
-      + '<p style="font-size:16px;max-width:440px;line-height:1.6;opacity:0.8;margin:0;">Please check back soon.</p>';
+    o.innerHTML = (
+      '<img class="pn-logo" src="' + logoUrl + '" alt="' + shopName + '">'
+      + '<div class="pn-name">' + shopName + '</div>'
+      + (tagline ? '<div class="pn-tag">' + tagline + '</div>' : '<div style="height:30px"></div>')
+      + '<div class="pn-rule"></div>'
+      + '<h1 class="pn-head">This shop is currently offline</h1>'
+      + '<p class="pn-body">' + (igHandle ? 'For orders or questions, find us on Instagram.' : 'Please check back later.') + '</p>'
+      + (igHandle ? '<a class="pn-ig" href="' + igLink + '" target="_blank" rel="noopener">' + IG_SVG + ' Visit our Instagram</a>' : '')
+    );
     document.body.appendChild(o);
   }
 
