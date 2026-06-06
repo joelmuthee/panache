@@ -364,6 +364,7 @@ function itemAddedAt(bag) {
 
 // ====== IMAGES ======
 const imageInput = document.getElementById('imageInput');
+const costInput = document.getElementById('costInput');
 const imagePreview = document.getElementById('imagePreview');
 
 imageInput.addEventListener('change', e => {
@@ -618,6 +619,10 @@ function saveItem() {
   if (!name) { showToast('Item name is required.'); return; }
   if (!price || price < 0) { showToast('Enter a valid price.'); return; }
 
+  // Buying price (cost) — admin-only, optional, never rejected. Blank/0 = not recorded.
+  const costRaw = costInput.value.trim();
+  const cost = costRaw === '' ? 0 : Math.max(0, parseInt(costRaw, 10) || 0);
+
   if (editingId) {
     const item = items.find(i => i.id === editingId);
     if (!item) return;
@@ -626,6 +631,7 @@ function saveItem() {
     item.price = price;
     item.category = cat;
     item.postUrl = postUrl;
+    if (cost) item.cost = cost; else delete item.cost;
     // Merge stock: explicit 0 entries from form should remove size
     document.querySelectorAll('.stock-qty').forEach(inp => {
       const sz = inp.dataset.size;
@@ -652,6 +658,7 @@ function saveItem() {
       stock, sales: [],
       createdAt: new Date().toISOString(),
     };
+    if (cost) newItem.cost = cost;
     const extraDataUrls = stagedExtras.map(s => s.dataUrl || s.url).filter(Boolean);
     if (extraDataUrls.length) newItem.images = [newItem.image, ...extraDataUrls];
     items.unshift(newItem);
@@ -752,6 +759,7 @@ function resetForm() {
   document.getElementById('descInput').value = '';
   document.getElementById('priceInput').value = '';
   document.getElementById('postUrlInput').value = '';
+  costInput.value = '';
   clearStockForm();
   imageInput.value = '';
   imagePreview.innerHTML = '';
@@ -780,6 +788,7 @@ function editItem(id) {
   document.getElementById('descInput').value = item.description || '';
   document.getElementById('priceInput').value = item.price;
   document.getElementById('postUrlInput').value = item.postUrl || '';
+  costInput.value = item.cost || '';
   setStockToForm(item.stock || {});
   stagedImage = null;
   imagePreview.innerHTML = `<img src="${item.image}" style="max-width:200px;border-radius:8px;">`;
@@ -1031,12 +1040,36 @@ function _renderDashboardInner() {
     return { ...b, count, revenue };
   });
 
-  document.getElementById('kpiGrid').innerHTML = buckets.map(b => `
+  // All-time profit (admin-only) — sums realised − cost over ONLY the sold items
+  // that have a buying price recorded. costKnown = how many of the sold items
+  // carry a cost; soldItemsCount = all items with at least one sale (for the
+  // coverage note, so a partial figure isn't mistaken for total profit).
+  let profitAll = 0, costKnown = 0, soldItemsCount = 0;
+  items.forEach(item => {
+    const sold = totalUnitsSold(item);
+    if (sold <= 0) return;
+    soldItemsCount++;
+    if (item.cost) {
+      profitAll += totalRevenue(item) - item.cost * sold;
+      costKnown++;
+    }
+  });
+
+  document.getElementById('kpiGrid').innerHTML = buckets.map(b => {
+    let profitSub = '';
+    if (b.label === 'All time' && costKnown > 0) {
+      const note = costKnown < soldItemsCount
+        ? `<span id="statAllProfitNote" style="color:#999;font-weight:400;"> · from ${costKnown}/${soldItemsCount} with cost</span>`
+        : '';
+      profitSub = `<div id="statAllProfitSub" class="kpi-profit" style="font-size:12px;color:#2e7d32;font-weight:600;margin-top:2px;">Profit <span id="statAllProfit">${fmtKsh(profitAll)}</span>${note}</div>`;
+    }
+    return `
     <div class="kpi-card">
       <div class="kpi-label">${b.label}</div>
       <div class="kpi-count">${b.count} <span class="kpi-unit">pairs</span></div>
-      <div class="kpi-revenue">${fmtKsh(b.revenue)}</div>
-    </div>`).join('');
+      <div class="kpi-revenue">${fmtKsh(b.revenue)}</div>${profitSub}
+    </div>`;
+  }).join('');
 
   const splitEl = document.getElementById('posTodaySplit');
   if (splitEl) {
@@ -1163,6 +1196,18 @@ function renderInventory() {
     const statusCls = units === 0 ? 'zero' : units <= 5 ? 'low' : 'ok';
     const statusLabel = units === 0 ? 'Out of stock' : units <= 5 ? 'Low stock' : 'In stock';
 
+    // Admin-only cost/profit subline — shown only when a buying price is recorded.
+    let costLine = '';
+    if (item.cost) {
+      if (soldUnits > 0) {
+        const profit = totalRevenue(item) - item.cost * soldUnits;
+        costLine = `<div style="font-size:11px;color:#2e7d32;">cost ${fmtKsh(item.cost)} · profit ${fmtKsh(profit)}</div>`;
+      } else {
+        const margin = item.price - item.cost;
+        costLine = `<div style="font-size:11px;color:#2e7d32;">cost ${fmtKsh(item.cost)} · margin ${fmtKsh(margin)}</div>`;
+      }
+    }
+
     return `
     <tr>
       <td><img class="item-img" src="${item.image}" alt="${escapeHtml(item.name)}"></td>
@@ -1171,7 +1216,7 @@ function renderInventory() {
         <div style="font-size:11px;color:#999;margin-top:2px;">${soldUnits} sold · ${fmtKsh(totalRevenue(item))} revenue</div>
       </td>
       <td style="font-size:13px;">${escapeHtml(item.category || '—')}</td>
-      <td style="font-size:13px;font-weight:600;">${fmtKsh(item.price)}</td>
+      <td style="font-size:13px;font-weight:600;">${fmtKsh(item.price)}${costLine}</td>
       <td><div class="stock-cells">${stockCells}</div></td>
       <td style="font-weight:700;font-size:14px;">${units}</td>
       <td><span class="stock-pill ${statusCls}">${statusLabel}</span></td>
