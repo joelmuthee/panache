@@ -151,6 +151,8 @@ const PAGE_SIZE = 16;
 
   // ── RENDER ──
   function render() {
+    buildCatDropdown();
+    buildSizeDropdown();
     const filtered = applyFilters();
     // Apply sort on top of filters. 'default' keeps the source feed order.
     if (currentSort === 'priceAsc') filtered.sort((a, b) => (a.price || 0) - (b.price || 0));
@@ -253,8 +255,94 @@ const PAGE_SIZE = 16;
     });
   }
 
-  wirePills('catPills', 'cat', v => currentCat = v);
-  wirePills('sizePills', 'size', v => currentSize = v);
+  // ── CATEGORY + SIZE FILTER DROPDOWNS ──
+  // Curated static lists (preserved from the original pill rows incl. the "43+"
+  // bucket and the "Men's"->"Men's Shoes" label/value split).
+  const CAT_OPTIONS = [
+    { val: 'all', text: 'All' }, { val: 'Heels', text: 'Heels' }, { val: 'Flats', text: 'Flats' },
+    { val: 'Sandals', text: 'Sandals' }, { val: 'Boots', text: 'Boots' }, { val: 'Sneakers', text: 'Sneakers' },
+    { val: 'Loafers', text: 'Loafers' }, { val: "Men's Shoes", text: "Men's" }
+  ];
+  const SIZE_OPTIONS = [{ val: 'all', text: 'All' }].concat(
+    ['35', '36', '37', '38', '39', '40', '41', '42', '43+'].map(s => ({ val: s, text: s }))
+  );
+  function buildCatDropdown() {
+    initDropdowns();
+    document.getElementById('catPills').innerHTML = dropdownHTML({ kind: 'cat', value: currentCat, ariaLabel: 'Filter by category', groups: [{ label: null, options: CAT_OPTIONS }] });
+  }
+  function buildSizeDropdown() {
+    document.getElementById('sizePills').innerHTML = dropdownHTML({ kind: 'size', value: currentSize, ariaLabel: 'Filter by size', groups: [{ label: null, options: SIZE_OPTIONS }] });
+  }
+
+  // Custom filter dropdown — replaces the native <select>/pill row so the open
+  // list can show a "scroll for more" cue and an active-filter tint.
+  function dropdownHTML({ kind, value, ariaLabel, groups }) {
+    let cur = null;
+    groups.forEach(g => g.options.forEach(o => { if (o.val === value) cur = o; }));
+    if (!cur) cur = groups[0].options[0];
+    const body = groups.map(g =>
+      (g.label ? `<div class="cdrop-group">${escapeHtml(g.label)}</div>` : '') +
+      g.options.map(o => `<button type="button" role="option" class="cdrop-opt${o.val === value ? ' selected' : ''}" data-val="${escapeHtml(o.val)}"${o.val === value ? ' aria-selected="true"' : ''}>${escapeHtml(o.text)}</button>`).join('')
+    ).join('');
+    const active = value && value !== 'all';
+    return `<div class="cdrop filter-select${active ? ' cdrop--active' : ''}" data-kind="${kind}" aria-label="${escapeHtml(ariaLabel)}">`
+      + `<button type="button" class="cdrop-trigger sort-select" aria-haspopup="listbox" aria-expanded="false"><span class="cdrop-current">${escapeHtml(cur.text)}</span></button>`
+      + `<div class="cdrop-panel" role="listbox" hidden><div class="cdrop-scroll">${body}</div><div class="cdrop-morehint" aria-hidden="true"></div></div>`
+      + `</div>`;
+  }
+  function updateDropHint(sc) {
+    const hint = sc.parentElement && sc.parentElement.querySelector('.cdrop-morehint');
+    if (hint) hint.classList.toggle('show', sc.scrollHeight - sc.scrollTop - sc.clientHeight > 4);
+  }
+  function closeAllDropdowns() {
+    document.querySelectorAll('.cdrop.open').forEach(d => {
+      d.classList.remove('open');
+      const p = d.querySelector('.cdrop-panel'); if (p) p.hidden = true;
+      const t = d.querySelector('.cdrop-trigger'); if (t) t.setAttribute('aria-expanded', 'false');
+    });
+  }
+  function openDropdown(drop) {
+    drop.classList.add('open');
+    drop.querySelector('.cdrop-panel').hidden = false;
+    drop.querySelector('.cdrop-trigger').setAttribute('aria-expanded', 'true');
+    const sc = drop.querySelector('.cdrop-scroll');
+    const sel = sc.querySelector('.cdrop-opt.selected');
+    if (sel) sc.scrollTop = Math.max(0, sel.offsetTop - 8);
+    updateDropHint(sc);
+  }
+  let dropdownsBound = false;
+  function initDropdowns() {
+    if (dropdownsBound) return;
+    dropdownsBound = true;
+    document.addEventListener('click', (e) => {
+      const trigger = e.target.closest('.cdrop-trigger');
+      if (trigger) {
+        e.stopPropagation();
+        const drop = trigger.closest('.cdrop');
+        const wasOpen = drop.classList.contains('open');
+        closeAllDropdowns();
+        if (!wasOpen) openDropdown(drop);
+        return;
+      }
+      const opt = e.target.closest('.cdrop-opt');
+      if (opt) {
+        const drop = opt.closest('.cdrop');
+        const val = opt.dataset.val, kind = drop.dataset.kind;
+        closeAllDropdowns();
+        if (kind === 'cat') currentCat = val;
+        else if (kind === 'size') currentSize = val;
+        currentPage = 1;
+        render();
+        return;
+      }
+      if (!e.target.closest('.cdrop-panel')) closeAllDropdowns();
+    });
+    document.addEventListener('scroll', (e) => {
+      if (e.target.classList && e.target.classList.contains('cdrop-scroll')) updateDropHint(e.target);
+    }, true);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAllDropdowns(); });
+  }
+
   wirePills('availPills', 'avail', v => currentAvail = v);
   document.getElementById('sortSelect')?.addEventListener('change', e => {
     currentSort = e.target.value;
