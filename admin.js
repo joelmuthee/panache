@@ -1455,7 +1455,7 @@ function buildBroadcastMessage(recipientName) {
     ? '\n\n' + selectedItems.map((b, i) => `${i + 1}. *${b.name}*${b.price > 0 ? ' · ' + fmtKsh(b.price) : ''}`).join('\n')
     : '';
   const greet = recipientName ? `Hi ${recipientName.split(' ')[0]}! ` : 'Hi! ';
-  return `${greet}It's The Panache Store. ${subject || 'New ALDO styles just landed'}.${itemsBlock}\n\nBrowse the full collection: ${SHOP_URL}\n\nReply here to enquire or place an order. 💜`;
+  return `${greet}It's The Panache Store. ${subject || 'New ALDO styles just landed'}.${itemsBlock}\n\nBrowse the full collection: ${SHOP_URL}\n\nThe Panache Store 💜`;
 }
 
 function renderBroadcastPreview() {
@@ -1896,7 +1896,7 @@ function renderClients() {
 window.clientMessage = phone => {
   const c = clientsLedger().find(x => x.phone === phone);
   const first = (c && c.name ? c.name : 'there').split(' ')[0];
-  const msg = `Hi ${first}! Thanks for shopping with The Panache. Fresh pieces just landed. Browse what's new here: ${SHOP_URL}\n\nReply here and I'll help you order. 💜`;
+  const msg = `Hi ${first}! Thanks for shopping with The Panache. Fresh pieces just landed. Browse what's new here: ${SHOP_URL}\n\nThe Panache Store 💜`;
   window.open(`https://wa.me/${clientWaPhone(phone)}?text=${encodeURIComponent(msg)}`, '_blank');
 };
 // "Item bought" autocomplete: type → tappable in-stock items → pick to record a sale.
