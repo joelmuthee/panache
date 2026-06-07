@@ -139,7 +139,11 @@ img { max-width: 100%; display: block; }
 /* ===== GALLERY ===== */
 .gallery {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  /* 3 cols on desktop, naturally degrades to 2 → 1 as viewport narrows.
+     Container is 92vw capped at 1200px, so minmax(360px,1fr) puts ~3
+     cards across at 1200px (3×360 + 2×24 = 1128) and falls to 2 cols
+     once each card would shrink past 360px. */
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
   gap: 24px; padding: 16px 0 40px;
 }
 .card {

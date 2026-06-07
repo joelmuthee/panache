@@ -1,5 +1,5 @@
 // The Panache Store — public catalog
-const PAGE_SIZE = 16;
+const PAGE_SIZE = 15;
 
 (async function () {
   const gallery = document.getElementById('gallery');
