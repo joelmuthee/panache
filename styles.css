@@ -1035,6 +1035,12 @@ img { max-width: 100%; display: block; }
 .pos-row { display: flex; gap: 12px; flex-wrap: wrap; }
 .pos-row .field { flex: 1; min-width: 120px; }
 .pos-qty { max-width: 90px; }
+.bulksell-rows { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; scrollbar-width: thin; padding-right: 2px; margin-top: 4px; }
+.bulksell-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: rgba(0,0,0,0.035); border: 1px solid rgba(0,0,0,0.1); border-radius: 10px; padding: 6px 10px; }
+.bulksell-row-name { flex: 1 1 auto; min-width: 0; font-size: 12.5px; overflow-wrap: anywhere; }
+.bulksell-row .bsr-size { width: auto; max-width: 45%; flex: 0 0 auto; font-size: 12px; padding: 3px 6px; border: 1px solid rgba(0,0,0,0.2); border-radius: 6px; background: #fff; }
+.bulksell-row .bsr-onesize { font-size: 12px; opacity: 0.7; flex: 0 0 auto; white-space: nowrap; }
+.client-item-empty { padding: 10px 12px; font-size: 13px; color: #9a8aa5; }
 .pos-pay { display: flex; gap: 10px; }
 .pos-pay-btn { flex: 1; padding: 14px; border-radius: 10px; border: 2px solid var(--line); background: #fff; font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit; color: var(--ink-soft); transition: 0.15s; }
 .pos-pay-btn.active { border-color: var(--gold-deep); background: var(--surface, #f1eef7); color: var(--ink); }
