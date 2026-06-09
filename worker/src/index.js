@@ -474,6 +474,63 @@ export default {
     // Health
     if (path === "/api/health") return json({ ok: true, time: new Date().toISOString() });
 
+    // --- Share page: HTML with OpenGraph tags so WhatsApp / FB / iMessage
+    //     render a rich preview (shoe photo + name) when someone shares an
+    //     enquiry link. WhatsApp's crawler will NOT preview a bare image URL —
+    //     it needs an HTML page with og:image. Served from the worker domain
+    //     (NOT the catalog zone) so the *.pages.dev custom domain's bot
+    //     protection can't 403 facebookexternalhit. Humans get redirected
+    //     straight to the catalogue. Reference pattern: thriftlux worker.
+    {
+      const shareMatch = path.match(/^\/share\/([^/]+)$/);
+      if (request.method === "GET" && shareMatch) {
+        const id = decodeURIComponent(shareMatch[1]);
+        const catalog = "https://thepanache.essenceautomations.com/";
+        const raw = await env.ITEMS.get("data");
+        const data = raw ? JSON.parse(raw) : { items: [] };
+        const item = (data.items || []).find((i) => i.id === id);
+        if (!item) return Response.redirect(catalog, 302);
+        const esc = (s) => String(s == null ? "" : s)
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        // Image must be an absolute https URL on a domain that returns 200
+        // directly. Item images are stored as relative `images/items/<id>.jpg`,
+        // so prepend the catalog Pages domain.
+        let img = item.image || "";
+        if (img && !/^https?:\/\//i.test(img)) img = `${catalog}${img.replace(/^\/+/, "")}`;
+        const priceTxt = item.price > 0 ? ` · Ksh ${Number(item.price).toLocaleString("en-KE")}` : "";
+        const desc = (item.description || `Authentic ALDO shoes at The Panache Store, Nairobi.`).slice(0, 200);
+        const html = `<!DOCTYPE html><html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(item.name)} · The Panache Store</title>
+<meta property="og:type" content="product">
+<meta property="og:title" content="${esc(item.name)}${esc(priceTxt)}">
+<meta property="og:description" content="${esc(desc)}">
+<meta property="og:image" content="${esc(img)}">
+<meta property="og:image:secure_url" content="${esc(img)}">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1080">
+<meta property="og:image:height" content="1080">
+<meta property="og:image:alt" content="${esc(item.name)}">
+<meta property="og:url" content="${catalog}">
+<meta property="og:site_name" content="The Panache Store">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${esc(item.name)}${esc(priceTxt)}">
+<meta name="twitter:image" content="${esc(img)}">
+<meta http-equiv="refresh" content="0; url=${catalog}">
+</head><body style="font-family:system-ui,sans-serif;background:#1a0d2e;color:#f5e9c8;text-align:center;padding:60px 20px;">
+<p>Opening The Panache Store…</p>
+<p><a href="${catalog}" style="color:#d4af37;">Tap here if you're not redirected</a></p>
+<script>location.replace(${JSON.stringify(catalog)});</script>
+</body></html>`;
+        return new Response(html, {
+          status: 200,
+          headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300", ...CORS },
+        });
+      }
+    }
+
     // GET /api/items — public
     if (request.method === "GET" && path === "/api/items") {
       const data = await getData(env);

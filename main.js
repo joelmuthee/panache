@@ -72,12 +72,20 @@ const PAGE_SIZE = 15;
       : `Hi! I'd like to check availability of the *${item.name}* (${fmtPrice(item.price)})${sizeHint} from The Panache Store.`;
   }
 
+  // Worker share page — when this URL is shared into WhatsApp, the crawler
+  // fetches the og:image and renders a rich preview card with the shoe photo,
+  // name and price. Served from the worker domain (not the Pages zone) so the
+  // FB/WA crawler isn't blocked by bot protection. Item-aware: /share/<id>.
+  const SHARE_BASE = 'https://panachekenya.stawisystems.workers.dev/share/';
+
   function whatsappLink(item, chosenSize) {
     const phone = settings.whatsappNumber || '2540734737373';
-    // wa.me fallback keeps the Instagram post link tail so WhatsApp shows a preview.
+    // Append the share-page URL so WhatsApp renders a preview card with the
+    // shoe image — replaces the old `📸 instagram.com/p/...` tail which only
+    // gave a generic IG preview (and sometimes none at all if IG rate-limits).
     const msg = item.sold
       ? enquireBody(item, chosenSize)
-      : `${enquireBody(item, chosenSize)}\n\n📸 ${item.postUrl}`;
+      : `${enquireBody(item, chosenSize)}\n\n${SHARE_BASE}${encodeURIComponent(item.id)}`;
     return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
   }
 
