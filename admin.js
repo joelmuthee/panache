@@ -170,92 +170,6 @@ function showToast(msg) {
   setTimeout(() => toast.classList.remove('show'), 2500);
 }
 
-// ====== TRASH (device-local restore bin) ======
-// Deleted items are stashed in localStorage so they can be restored. Kept off the
-// server so the public catalog never sees them. Stored per device only.
-const TRASH_KEY = 'panache_trash';
-const TRASH_CAP = 50;
-
-function getTrash() {
-  try { return JSON.parse(localStorage.getItem(TRASH_KEY) || '[]'); } catch { return []; }
-}
-function setTrash(arr) { localStorage.setItem(TRASH_KEY, JSON.stringify(arr.slice(0, TRASH_CAP))); }
-function trashPush(removed) {
-  // removed: [{ item, index }] — index = position in items at delete time, for in-place restore
-  const now = new Date().toISOString();
-  const entries = removed.filter(x => x && x.item).map(({ item, index }) => ({ item, index, deletedAt: now }));
-  setTrash([...entries, ...getTrash()]);
-}
-
-function trashTimeAgo(iso) {
-  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60) return 'just now';
-  const m = Math.floor(s / 60); if (m < 60) return `${m} min ago`;
-  const h = Math.floor(m / 60); if (h < 24) return `${h} hr ago`;
-  const d = Math.floor(h / 24); return `${d} day${d === 1 ? '' : 's'} ago`;
-}
-
-function renderTrash() {
-  const list = document.getElementById('trashList');
-  if (!list) return;
-  const trash = getTrash();
-  const countEl = document.getElementById('trashCount');
-  const navCount = document.getElementById('navTrashCount');
-  if (countEl) countEl.textContent = trash.length;
-  if (navCount) navCount.textContent = trash.length;
-  const emptyBtn = document.getElementById('emptyTrashBtn');
-  if (emptyBtn) emptyBtn.style.display = trash.length ? '' : 'none';
-  if (!trash.length) {
-    list.innerHTML = '<p style="color:var(--ink-faint);font-size:13px;padding:10px 2px;">Trash is empty. Deleted items land here so you can restore them. Stored on this device only.</p>';
-    return;
-  }
-  list.innerHTML = trash.map(({ item, deletedAt }) => `
-    <div class="admin-card">
-      <img src="${item.image}" alt="${escapeHtml(item.name)}" loading="lazy">
-      <div class="admin-card-body">
-        <div class="admin-card-name">${escapeHtml(item.name)}</div>
-        <div class="admin-card-stock">${escapeHtml(item.category || 'Uncategorised')} · deleted ${trashTimeAgo(deletedAt)}</div>
-        <div class="admin-card-actions">
-          <button class="primary" onclick="restoreItem('${item.id}')">Restore</button>
-          <button class="danger" onclick="deleteForever('${item.id}')">Delete forever</button>
-        </div>
-      </div>
-    </div>`).join('');
-}
-
-async function restoreItem(id) {
-  const trash = getTrash();
-  const idx = trash.findIndex(t => t.item && t.item.id === id);
-  if (idx === -1) return;
-  if (items.some(i => i.id === id)) {
-    trash.splice(idx, 1); setTrash(trash); renderTrash();
-    showToast('Already in the catalog — cleared from Trash.');
-    return;
-  }
-  const entry = trash[idx];
-  const at = Math.min(typeof entry.index === 'number' ? entry.index : items.length, items.length);
-  items.splice(at, 0, entry.item);
-  saveData();
-  trash.splice(idx, 1); setTrash(trash);
-  renderList(); renderDashboard(); renderInventory(); renderTrash();
-  showToast('Item restored to the catalog.');
-}
-
-async function deleteForever(id) {
-  if (!await confirmAction('Permanently remove this from Trash? It cannot be restored after this.', 'Delete forever')) return;
-  setTrash(getTrash().filter(t => !(t.item && t.item.id === id)));
-  renderTrash();
-  showToast('Removed from Trash.');
-}
-
-async function emptyTrash() {
-  const n = getTrash().length;
-  if (!n) return;
-  if (!await confirmAction(`Empty Trash? ${n} item${n === 1 ? '' : 's'} will be gone for good.`, 'Empty trash')) return;
-  setTrash([]);
-  renderTrash();
-  showToast('Trash emptied.');
-}
 
 // ====== IN-PAGE DIALOGS (webview-safe replacements for confirm()/prompt()) ======
 // WhatsApp/Instagram in-app browsers silently suppress native confirm()/prompt()
@@ -805,16 +719,12 @@ function editItem(id) {
 
 async function deleteItem(id) {
   if (!await confirmAction('Delete this item? This cannot be undone.', 'Delete')) return;
-  const _idx = items.findIndex(i => i.id === id);
-  const _removed = _idx === -1 ? null : items[_idx];
   items = items.filter(i => i.id !== id);
   saveData();
-  if (_removed) trashPush([{ item: _removed, index: _idx }]);
   renderList();
   renderDashboard();
   renderInventory();
-  renderTrash();
-  showToast('Item deleted. Restore it from Trash if needed.');
+  showToast('Item deleted.');
 }
 
 // ====== SALE MODAL ======
@@ -1454,17 +1364,13 @@ function bulkSelectAll() { items.forEach(i => bulkSelected.add(i.id)); renderLis
 
 async function bulkDelete() {
   if (!await confirmAction(`Delete ${bulkSelected.size} item(s)? This cannot be undone.`, 'Delete')) return;
-  const _removed = [];
-  items.forEach((it, i) => { if (bulkSelected.has(it.id)) _removed.push({ item: it, index: i }); });
   items = items.filter(i => !bulkSelected.has(i.id));
   bulkSelected.clear();
   saveData();
-  trashPush(_removed);
   renderList();
   renderInventory();
   renderDashboard();
-  renderTrash();
-  showToast('Deleted. Restore from Trash if needed.');
+  showToast('Deleted.');
 }
 
 async function bulkSetCategory() {
@@ -1649,9 +1555,6 @@ window.bulkClear = bulkClear;
 window.bulkSelectAll = bulkSelectAll;
 window.bulkDelete = bulkDelete;
 window.bulkSetCategory = bulkSetCategory;
-window.restoreItem = restoreItem;
-window.deleteForever = deleteForever;
-window.emptyTrash = emptyTrash;
 
 // ====== INSIGHTS ======
 function loadInsights() {
@@ -2169,7 +2072,6 @@ async function init() {
   renderBroadcastPreview();
   renderInsights();
   renderClients();
-  renderTrash();
   initNavScrollSpy();
 }
 
