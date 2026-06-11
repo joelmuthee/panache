@@ -400,6 +400,7 @@ document.getElementById('igQuickBtn')?.addEventListener('click', async () => {
     }
     document.getElementById('postUrlInput').value = data.postUrl || url;
 
+    { const _me = document.getElementById('manualEntry'); if (_me) _me.open = true; }
     status.textContent = '✓ Image and caption loaded. Review the name, category, price and stock, then Save.';
     status.className = 'ig-quick-status ok';
   } catch (err) {
@@ -690,6 +691,7 @@ function resetForm() {
   const divider = document.getElementById('manualEntryDivider');
   if (igPanel) igPanel.style.display = '';
   if (divider) divider.style.display = '';
+  { const _me = document.getElementById('manualEntry'); if (_me) _me.open = false; }
 }
 
 function editItem(id) {
@@ -714,6 +716,7 @@ function editItem(id) {
   const divider = document.getElementById('manualEntryDivider');
   if (igPanel) igPanel.style.display = 'none';
   if (divider) divider.style.display = 'none';
+  { const _me = document.getElementById('manualEntry'); if (_me) _me.open = true; }
   document.getElementById('formTitle').scrollIntoView({ behavior: 'auto', block: 'start' });
 }
 
@@ -2225,6 +2228,23 @@ document.getElementById('posRecordBtn')?.addEventListener('click', recordPosSale
 document.getElementById('posCancelBtn')?.addEventListener('click', posReset);
 document.getElementById('posNewSaleBtn')?.addEventListener('click', posReset);
 document.getElementById('posPrintReceiptBtn')?.addEventListener('click', posPrintReceipt);
+
+// ===== Mobile-safe collapsible toggles (fleet rollout 2026-06-11) =====
+// JS-driven (preventDefault + flip .open) — a <summary> with display:flex breaks
+// native <details> toggling in mobile WebKit. See CATALOG-STANDARDS.md.
+(function () {
+  var manualEntry = document.getElementById('manualEntry');
+  var manualSummary = document.getElementById('manualEntryDivider');
+  if (manualSummary) manualSummary.addEventListener('click', function (e) { e.preventDefault(); if (manualEntry) manualEntry.open = !manualEntry.open; });
+  var addLink = document.querySelector('.admin-nav a[href="#addForm"]');
+  if (addLink) addLink.addEventListener('click', function () { if (manualEntry) manualEntry.open = true; });
+
+  var broadcastCollapse = document.getElementById('broadcastCollapse');
+  var broadcastSummary = broadcastCollapse ? broadcastCollapse.querySelector('summary.dash-summary') : null;
+  if (broadcastSummary) broadcastSummary.addEventListener('click', function (e) { e.preventDefault(); broadcastCollapse.open = !broadcastCollapse.open; });
+  var bcLink = document.querySelector('.admin-nav a[href="#broadcastDash"]');
+  if (bcLink) bcLink.addEventListener('click', function () { if (broadcastCollapse) broadcastCollapse.open = true; });
+})();
 
 checkAuth();
 

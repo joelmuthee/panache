@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#52147a">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20260607notrash">
+<link rel="stylesheet" href="styles.css?v=c20260611">
 </head>
 <body style="background:#faf7ff;">
 
@@ -177,7 +177,8 @@
 
   <!-- ====== WHATSAPP BROADCAST ====== -->
   <section class="dash" id="broadcastDash">
-    <h2 class="dash-title">WhatsApp Marketing</h2>
+    <details class="dash-collapse" id="broadcastCollapse">
+    <summary class="dash-summary"><h2 class="dash-title">WhatsApp Marketing</h2></summary>
     <p style="font-size:13.5px;color:var(--ink-soft);margin:-8px 0 16px;">Pick items, compose a message and send to past buyers. <strong>Manual mode</strong> — clicks open WhatsApp Web pre-filled with the message and the buyer's number.</p>
 
     <div class="set-form" style="background:#fff;">
@@ -205,6 +206,7 @@
       </div>
       <p id="broadcastStatus" style="font-size:13px;color:var(--ink-soft);margin-top:10px;"></p>
     </div>
+    </details>
   </section>
 
   <!-- ====== CLIENTS ====== -->
@@ -276,7 +278,10 @@
       <p id="igQuickStatus" class="ig-quick-status"></p>
     </div>
 
-    <div class="manual-entry-divider" id="manualEntryDivider"><span>OR enter manually below</span></div>
+    <details class="manual-entry" id="manualEntry">
+    <summary class="manual-entry-divider" id="manualEntryDivider">
+      <span class="me-row"><span class="me-pill"><svg class="me-plus" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add an item manually</span></span>
+    </summary>
 
     <div class="field">
       <label>Main image</label>
@@ -375,6 +380,7 @@
       <button class="btn-admin primary" id="saveBtn">Save item</button>
       <button class="btn-admin" id="cancelBtn" style="display:none;">Cancel edit</button>
     </div>
+    </details>
   </div>
 
   <!-- ====== ITEM LIST ====== -->
@@ -649,6 +655,6 @@
   </div>
 </div>
 
-<script src="admin.js?v=20260607notrash"></script>
+<script src="admin.js?v=c20260611"></script>
 </body>
 </html>
