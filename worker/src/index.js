@@ -138,6 +138,68 @@ function deriveBrand(caption) {
   return [null, null];
 }
 
+// Pull a price out of a caption — ONLY when unambiguous (money marker / k suffix /
+// price·bei·now), so auto-sync never puts a WRONG price on the live shop. Returns
+// an integer KES amount, or 0 when no clear price is posted ("Price on request").
+function parsePriceFromCaption(caption) {
+  const text = (caption || "").replace(/\s+/g, " ").trim();
+  if (!text) return 0;
+  const cands = [];
+  const push = (raw, mult, index) => {
+    if (raw == null) return;
+    const n = Math.round(parseFloat(String(raw).replace(/,/g, "")) * (mult || 1));
+    if (Number.isFinite(n) && n >= 100 && n <= 1000000) cands.push({ n, index });
+  };
+  let m, re;
+  re = /(?:ksh?s?|kes)\s*\.?\s*([\d,]+(?:\.\d+)?)\s*(k)?/gi;
+  while ((m = re.exec(text))) push(m[1], m[2] ? 1000 : 1, m.index);
+  re = /@\s*([\d,]+(?:\.\d+)?)\s*(k)?/gi;
+  while ((m = re.exec(text))) push(m[1], m[2] ? 1000 : 1, m.index);
+  re = /([\d,]+(?:\.\d+)?)\s*\/[=\-]/gi;
+  while ((m = re.exec(text))) push(m[1], 1, m.index);
+  re = /(?:price|bei|now|going for)\s*:?\s*(?:ksh?s?\s*)?([\d,]+(?:\.\d+)?)\s*(k)?/gi;
+  while ((m = re.exec(text))) push(m[1], m[2] ? 1000 : 1, m.index);
+  re = /(?:^|[^a-z0-9.])(\d{1,3}(?:\.\d+)?)\s*k\b/gi;
+  while ((m = re.exec(text))) {
+    const before = text.slice(Math.max(0, m.index - 6), m.index).toLowerCase();
+    if (/siz|sz/.test(before)) continue;
+    push(m[1], 1000, m.index);
+  }
+  if (!cands.length) return 0;
+  cands.sort((a, b) => a.index - b.index);
+  return cands[0].n;
+}
+
+// Build a public product description from an IG caption. Keep the descriptive
+// text the owner wrote, but strip the parts that don't belong on the storefront:
+// hashtags, the price (it has its own field — prices must NOT appear in the
+// description), contact/CTA tails, and SOLD flags. Em/en dashes go to commas per
+// the copy standard. Falls back to the canned line when nothing useful survives.
+// Do NOT strip a leading word as an "IG handle" here — feed-API captions have no
+// handle prefix, so that strip eats the first real product word.
+const DEFAULT_DESC = "Quality footwear, photographed exactly as it is. Visit Piedmont Plaza, Ngong Road or order countrywide.";
+function captionToDescription(caption) {
+  let t = (caption || "").replace(/\r/g, "").trim();
+  if (!t) return DEFAULT_DESC;
+  t = t.split(/whastup|whatsapp|wa\.me|dm to order|dm to buy|inbox|order now|0\d{8,9}|\+?254\d{6,}/i)[0];
+  t = t
+    .replace(/#[^\s#]+/g, "")
+    .replace(/\d[\d,]*(?:\.\d+)?\s*\/[=\-]/g, "")                      // 4500/= 4500/-
+    .replace(/(?:ksh?s?\.?|kes)\s*\.?\s*\d[\d,]*(?:\.\d+)?\s*k?\b/gi, "") // Ksh 4500 / KES4500
+    .replace(/@\s*\d[\d,]*(?:\.\d+)?\s*k?\b/gi, "")                    // @4500
+    .replace(/\b(?:price|bei|now|going for)\s*:?\s*(?:ksh?s?\s*)?\d[\d,]*\s*k?\b/gi, "")
+    .replace(/\s*\/[=\-]/g, "")                                        // orphan /= /-
+    .replace(/\s*@(?!\w)/g, "")                                        // orphan @
+    .replace(/\bsold(?:\s*out)?\b/gi, "")
+    .replace(/\s*[—–]\s*/g, ", ")
+    .replace(/[•|]+/g, " ")
+    .replace(/\s+([.,!?])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s.,\-:;]+|[\s.,\-:;]+$/g, "")
+    .trim();
+  return t.length >= 8 ? t : DEFAULT_DESC;
+}
+
 function parseCaptionForBag(caption) {
   const text = (caption || "").trim();
   const lower = text.toLowerCase();
@@ -187,7 +249,8 @@ function parseCaptionForBag(caption) {
     name: brand,
     category: category || "Heels",
     stock,
-    description: "Quality footwear, photographed exactly as it is. Visit Piedmont Plaza, Ngong Road or order countrywide.",
+    price: parsePriceFromCaption(caption),
+    description: captionToDescription(caption),
   };
 }
 
@@ -464,7 +527,97 @@ async function putData(env, data) {
   await env.ITEMS.put("data", JSON.stringify(data));
 }
 
+// ---- IG auto-sync (cron) ----------------------------------------------------
+// Same discover→classify→commit pipeline as the admin widget, minus the human
+// review. Panache stores images as inline base64 data URLs (no KV image host),
+// so the worker fetches the cover, base64-encodes it, and inlines it on the item.
+// Panache's fleet stagger offset is :30 (Iman :00, Ryker :10, ThriftLux :20).
+const IG_AUTOSYNC_USER_ID = "5474622302"; // @thepanachekenya
+const AUTOSYNC_MAX_ITEMS = 20;
+async function runIgAutoSync(env) {
+  if ((await env.ITEMS.get("suspended")) === "1") return { ok: false, skipped: "suspended" };
+  let cfg;
+  try { cfg = JSON.parse(await env.ITEMS.get("autosync")) || {}; } catch { cfg = {}; }
+  if (cfg.enabled === false) return { ok: false, skipped: "disabled" };
+
+  const data = await getData(env);
+  if (!Array.isArray(data.items)) data.items = [];
+  const existingIds = new Set(data.items.map(i => i.id));
+  const existingPostUrls = new Set(data.items.map(i => i.postUrl).filter(Boolean));
+  // Permanent "already pulled" ledger — the tombstone the in-catalog check can't
+  // be. A shortcode here is never auto-added again, even after the owner deletes it.
+  const ledgerRaw = await env.ITEMS.get("ig_synced_codes");
+  const syncedCodes = new Set(ledgerRaw ? JSON.parse(ledgerRaw) : []);
+
+  const feed = await fetchIgFeed({ userId: IG_AUTOSYNC_USER_ID, count: 24 });
+  if (!feed.items) return { ok: false, error: feed.error || "feed empty" };
+
+  const fresh = feed.items.filter(it =>
+    it.imageUrl && it.shortcode &&
+    !existingIds.has(`ig_${it.shortcode}`) &&
+    !syncedCodes.has(it.shortcode) &&
+    !existingPostUrls.has(`https://www.instagram.com/p/${it.shortcode}/`)
+  ).slice(0, AUTOSYNC_MAX_ITEMS + 3);
+
+  const newItems = [];
+  const skipped = [];
+  for (const it of fresh) {
+    if (newItems.length >= AUTOSYNC_MAX_ITEMS) break;
+    const heuristic = looksLikeProduct(it.caption);
+    const [vision, text] = await Promise.all([
+      classifyPostWithVision(env, it.caption, it.imageUrl),
+      classifyPostWithAi(env, it.caption),
+    ]);
+    const visionOk = vision && !vision._debug;
+    const isShoe = heuristic || (visionOk && vision.is_shoe) || (text && text.is_shoe);
+    if (!isShoe) { skipped.push({ shortcode: it.shortcode, reason: "not a shoe" }); continue; }
+
+    const sug = parseCaptionForBag(it.caption);
+    const looksLikeFragment = (n) => !n || /^(size|tn|hh|js\d+|nb)$/i.test(String(n).trim());
+    let name = sug.name;
+    if (text?.is_shoe && !looksLikeFragment(text.name) && text.name !== "New Pair") name = text.name.trim();
+    else if (visionOk && vision.is_shoe && !looksLikeFragment(vision.name) && vision.name !== "New Pair") name = vision.name.trim();
+    let category = sug.category;
+    if (visionOk && vision.is_shoe && vision.category) { const c = coercePanacheCategory(vision.category); if (c) category = c; }
+    else if (text?.is_shoe && text.category) { const c = coercePanacheCategory(text.category); if (c) category = c; }
+    if (!PANACHE_CATEGORIES_SET.has(category)) category = "Heels";
+
+    try {
+      const r = await fetch(it.imageUrl);
+      if (!r.ok) throw new Error(`image fetch ${r.status}`);
+      const b64 = arrayToB64(new Uint8Array(await r.arrayBuffer()));
+      const stock = Object.keys(sug.stock || {}).length ? sug.stock : { "One Size": 1 };
+      newItems.push({
+        id: `ig_${it.shortcode}`,
+        name: (name || "New Pair").slice(0, 80),
+        category,
+        description: sug.description,
+        price: sug.price || 0, // parsed from caption; 0 (blank) only when no price posted
+        stock,
+        sales: [],
+        image: `data:image/jpeg;base64,${b64}`,
+        postUrl: `https://www.instagram.com/p/${it.shortcode}/`,
+        createdAt: it.takenAt || new Date().toISOString(),
+        autoSynced: true,
+      });
+    } catch (e) {
+      skipped.push({ shortcode: it.shortcode, reason: e.message });
+    }
+  }
+
+  if (newItems.length) {
+    data.items = newItems.concat(data.items);
+    await putData(env, data);
+    for (const i of newItems) syncedCodes.add(i.id.slice(3));
+    await env.ITEMS.put("ig_synced_codes", JSON.stringify([...syncedCodes]));
+  }
+  return { ok: true, added: newItems.length, names: newItems.map(i => i.name), skipped };
+}
+
 export default {
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runIgAutoSync(env));
+  },
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
 
@@ -615,7 +768,25 @@ export default {
       const payload = { items: body.items, settings: body.settings || {} };
       if (Array.isArray(body.clients)) payload.clients = body.clients;
       await putData(env, payload);
+      // Tombstone every IG-sourced item in this save so the auto-sync cron can't
+      // re-add one the owner later deletes (Panache's manual sync commits here).
+      try {
+        const codes = body.items.filter(i => i && typeof i.id === "string" && i.id.startsWith("ig_")).map(i => i.id.slice(3));
+        if (codes.length) {
+          const led = new Set(JSON.parse((await env.ITEMS.get("ig_synced_codes")) || "[]"));
+          let changed = false;
+          for (const c of codes) if (!led.has(c)) { led.add(c); changed = true; }
+          if (changed) await env.ITEMS.put("ig_synced_codes", JSON.stringify([...led]));
+        }
+      } catch (_) {}
       return json({ ok: true, count: body.items.length });
+    }
+
+    // Admin/agency: run the IG auto-sync on demand (same code the cron runs).
+    if (request.method === "POST" && path === "/api/autosync-run") {
+      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      const res = await runIgAutoSync(env);
+      return json(res);
     }
 
     // POST /api/items — create
@@ -937,6 +1108,7 @@ export default {
               name,
               category,
               stock: heuristicSuggestion.stock,
+              price: heuristicSuggestion.price,
               description: heuristicSuggestion.description,
             },
             ai_reason: reason,

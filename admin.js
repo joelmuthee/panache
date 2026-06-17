@@ -392,8 +392,24 @@ document.getElementById('igQuickBtn')?.addEventListener('click', async () => {
     }
     renderExtraImagesPreview();
 
+    // Keep the descriptive text but drop the price (it has its own field), contact
+    // tail, hashtags and SOLD flag. Em/en dashes → commas (copy standard).
     const cap = (data.caption || '').replace(/^[a-z0-9._]+\s+/i, '').trim();
-    document.getElementById('descInput').value = cap;
+    const desc = cap
+      .split(/whastup|whatsapp|wa\.me|dm to order|dm to buy|inbox|order now|0\d{8,9}|\+?254\d{6,}/i)[0]
+      .replace(/#[^\s#]+/g, '')
+      .replace(/\d[\d,]*(?:\.\d+)?\s*\/[=\-]/g, '')
+      .replace(/(?:ksh?s?\.?|kes)\s*\.?\s*\d[\d,]*(?:\.\d+)?\s*k?\b/gi, '')
+      .replace(/@\s*\d[\d,]*(?:\.\d+)?\s*k?\b/gi, '')
+      .replace(/\s*\/[=\-]/g, '')
+      .replace(/\s*@(?!\w)/g, '')
+      .replace(/\bsold(?:\s*out)?\b/gi, '')
+      .replace(/\s*[—–]\s*/g, ', ')
+      .replace(/\s+([.,!?])/g, '$1')
+      .replace(/\s{2,}/g, ' ')
+      .replace(/^[\s.,\-:;]+|[\s.,\-:;]+$/g, '')
+      .trim();
+    document.getElementById('descInput').value = desc;
     if (!document.getElementById('nameInput').value && cap) {
       const firstLine = cap.split(/[.!?\n]/)[0].trim().slice(0, 60);
       document.getElementById('nameInput').value = firstLine.charAt(0).toUpperCase() + firstLine.slice(1);
@@ -1392,21 +1408,88 @@ let broadcastSelectedIds = [];
 let broadcastRecipientsState = {};
 
 function pastBuyers() {
+  // Unique past buyers, carrying the (category, size) pairs each bought so the
+  // broadcast can be segmented (everyone who bought a category, or an EU size).
   const map = new Map();
   for (const item of items) {
     for (const s of (item.sales || [])) {
       if (!s.buyerPhone) continue;
       const phone = String(s.buyerPhone).replace(/[^0-9]/g, '');
       if (phone.length < 9) continue;
-      const existing = map.get(phone);
       const soldAt = new Date(s.soldAt || 0).getTime();
-      if (!existing || soldAt > existing.soldAt) {
-        map.set(phone, { phone, name: s.buyerName || '', soldAt, lastBought: item.name });
-      }
+      let e = map.get(phone);
+      if (!e) { e = { phone, name: '', soldAt: -1, lastBought: '', buys: [] }; map.set(phone, e); }
+      e.buys.push({ cat: item.category || '', size: s.size || '' });
+      if (soldAt >= e.soldAt) { e.soldAt = soldAt; e.lastBought = item.name; if (s.buyerName) e.name = s.buyerName; }
+      else if (!e.name && s.buyerName) e.name = s.buyerName;
     }
+  }
+  // Manually-added clients with a phone are broadcast recipients too. They have no
+  // purchase to segment by, so they only match an unsegmented (Any/Any) blast.
+  for (const c of (Array.isArray(clients) ? clients : [])) {
+    const phone = String(c.phone || '').replace(/[^0-9]/g, '');
+    if (phone.length < 9) continue;
+    const e = map.get(phone);
+    if (e) { if (!e.name && c.name) e.name = c.name; continue; }
+    map.set(phone, { phone, name: c.name || '', soldAt: new Date(c.createdAt || 0).getTime(), lastBought: '', buys: [] });
   }
   return [...map.values()].sort((a, b) => b.soldAt - a.soldAt);
 }
+
+// ===== Broadcast segmentation: filter recipients by category + EU size =====
+let broadcastFilterCat = 'all';
+let broadcastFilterSize = 'all';
+function broadcastSortSizes(arr) {
+  return arr.sort((a, b) => {
+    const na = parseFloat(a), nb = parseFloat(b);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    if (!isNaN(na)) return -1;
+    if (!isNaN(nb)) return 1;
+    return String(a).localeCompare(String(b));
+  });
+}
+function buyerMatchesFilter(b) {
+  const buys = b.buys || [];
+  // No purchase history (a manually-added contact) → only reachable in an
+  // unsegmented broadcast; we can't claim they bought a given category/size.
+  if (!buys.length) return broadcastFilterCat === 'all' && broadcastFilterSize === 'all';
+  return buys.some(x =>
+    (broadcastFilterCat === 'all' || x.cat === broadcastFilterCat) &&
+    (broadcastFilterSize === 'all' || x.size === broadcastFilterSize));
+}
+function soldCategories() {
+  const set = new Set();
+  items.forEach(b => { if (b.category && (b.sales || []).length) set.add(b.category); });
+  return [...set].sort();
+}
+function soldSizes(cat) {
+  const set = new Set();
+  items.forEach(b => { if (cat !== 'all' && b.category !== cat) return; (b.sales || []).forEach(s => { if (s.size) set.add(s.size); }); });
+  return broadcastSortSizes([...set]);
+}
+function populateBroadcastFilters() {
+  const catSel = document.getElementById('broadcastFilterCat');
+  const sizeSel = document.getElementById('broadcastFilterSize');
+  if (!catSel || !sizeSel) return;
+  const cats = soldCategories();
+  if (broadcastFilterCat !== 'all' && !cats.includes(broadcastFilterCat)) broadcastFilterCat = 'all';
+  catSel.innerHTML = `<option value="all">Any category</option>` + cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  catSel.value = broadcastFilterCat;
+  const sizes = soldSizes(broadcastFilterCat);
+  if (broadcastFilterSize !== 'all' && !sizes.includes(broadcastFilterSize)) broadcastFilterSize = 'all';
+  sizeSel.innerHTML = `<option value="all">Any size</option>` + sizes.map(s => `<option value="${escapeHtml(s)}">EU ${escapeHtml(s)}</option>`).join('');
+  sizeSel.value = broadcastFilterSize;
+}
+document.getElementById('broadcastFilterCat')?.addEventListener('change', e => {
+  broadcastFilterCat = e.target.value;
+  broadcastFilterSize = 'all'; // sizes are category-specific — reset when category changes
+  populateBroadcastFilters();
+  renderBroadcastRecipients();
+});
+document.getElementById('broadcastFilterSize')?.addEventListener('change', e => {
+  broadcastFilterSize = e.target.value;
+  renderBroadcastRecipients();
+});
 
 function renderBroadcastSelected() {
   const wrap = document.getElementById('broadcastSelectedItems');
@@ -1454,14 +1537,27 @@ function renderBroadcastPicker() {
 function renderBroadcastRecipients() {
   const wrap = document.getElementById('broadcastRecipients');
   if (!wrap) return;
-  const buyers = pastBuyers();
-  for (const b of buyers) {
+  populateBroadcastFilters();
+  const all = pastBuyers();
+  for (const b of all) {
     if (!(b.phone in broadcastRecipientsState)) {
       broadcastRecipientsState[b.phone] = { name: b.name, included: true };
     }
   }
+  const buyers = all.filter(buyerMatchesFilter);
+  const matchEl = document.getElementById('broadcastFilterMatch');
+  if (matchEl) {
+    const seg = (broadcastFilterCat === 'all' && broadcastFilterSize === 'all')
+      ? 'all buyers'
+      : [broadcastFilterCat === 'all' ? null : broadcastFilterCat, broadcastFilterSize === 'all' ? null : 'EU ' + broadcastFilterSize].filter(Boolean).join(' · ');
+    matchEl.textContent = `${buyers.length} ${buyers.length === 1 ? 'buyer' : 'buyers'}${seg === 'all buyers' ? '' : ' · ' + seg}`;
+  }
+  if (!all.length) {
+    wrap.innerHTML = '<p style="color:var(--ink-faint);font-size:13px;padding:8px 0;">No one to message yet. Record a sale with a buyer phone, or add a client with a phone in Clients below, and they\'ll appear here.</p>';
+    return;
+  }
   if (!buyers.length) {
-    wrap.innerHTML = '<p style="color:var(--ink-faint);font-size:13px;padding:8px 0;">No past buyers yet — once you record sales with buyer phone numbers, they\'ll appear here.</p>';
+    wrap.innerHTML = '<p style="color:var(--ink-faint);font-size:13px;padding:8px 0;">No buyers match this segment. Widen the category or size above.</p>';
     return;
   }
   wrap.innerHTML = `
@@ -1477,7 +1573,7 @@ function renderBroadcastRecipients() {
           <input type="checkbox" data-bc-toggle="${b.phone}" ${st.included ? 'checked' : ''}>
           <span class="broadcast-recipient-name">${escapeHtml(b.name || 'Unknown buyer')}</span>
           <span class="broadcast-recipient-phone">+${b.phone}</span>
-          <span class="broadcast-recipient-meta">last: ${escapeHtml(b.lastBought)}</span>
+          <span class="broadcast-recipient-meta">${b.lastBought ? 'last: ' + escapeHtml(b.lastBought) : 'added as a contact'}</span>
         </label>`;
     }).join('')}`;
   wrap.querySelectorAll('[data-bc-toggle]').forEach(cb => {
@@ -2164,6 +2260,8 @@ function showPosReceipt(s) {
   const wa = document.getElementById('posWaReceiptBtn');
   if (s.buyerPhone && s.buyerPhone.replace(/[^0-9]/g, '').length >= 9) { wa.href = `https://wa.me/${posWaPhone(s.buyerPhone)}?text=${encodeURIComponent(posReceiptText(s))}`; wa.style.display = ''; }
   else { wa.style.display = 'none'; }
+  const imgBtn = document.getElementById('posImgReceiptBtn'); // Shop Manager (5k)+ only
+  if (imgBtn) imgBtn.style.display = RECEIPT_IMAGE_ENABLED ? '' : 'none';
   document.getElementById('posReceiptPanel').style.display = '';
 }
 function posPrintReceipt() {
@@ -2183,6 +2281,104 @@ function posPrintReceipt() {
       <div class="rcpt-foot">Thank you for shopping with us!</div>
     </div>`;
   window.print();
+}
+
+// --- Image receipt (canvas PNG) — Shop Manager (5k)+ feature ---------------
+// Pure canvas (no library) so it works inside the WhatsApp / IG in-app browser.
+// Logo is same-origin (images/logo.jpg) so the canvas never taints on export.
+const RECEIPT_IMAGE_ENABLED = true;
+const RCPT_BRAND = { name: 'The Panache Store', gold: '#f5a820', goldDeep: '#d48c10', ink: '#1a0a2e', inkSoft: '#4a3060', faint: '#8a7a99', line: '#ede8f0', addr: ['0734 737 373'], url: 'thepanache.essenceautomations.com', sizePrefix: 'EU ' };
+let _receiptLogo = null;
+function loadReceiptLogo() {
+  if (_receiptLogo !== null) return Promise.resolve(_receiptLogo || null);
+  return new Promise(res => {
+    const img = new Image();
+    img.onload = () => { _receiptLogo = img; res(img); };
+    img.onerror = () => { _receiptLogo = false; res(null); };
+    img.src = 'images/logo.jpg';
+  });
+}
+function buildReceiptCanvas(s, logoImg, B) {
+  const SCALE = 3, W = 620, M = 44;
+  const qty = Number(s.qty) || 1;
+  const total = (Number(s.amount) || 0) * qty;
+  const hasBal = s.balance > 0;
+  const detail = [];
+  if (s.size) detail.push((B.sizePrefix || '') + s.size);
+  if (s.size || qty > 1) detail.push(`${qty} × ${fmtKsh(s.amount)}`);
+  const subLine = detail.join(' · ');
+  const seg = { top: 34, logo: logoImg ? 132 : 88, caption: 30, addr: B.addr.length > 1 ? 46 : 30, div1: 26,
+    item: subLine ? 64 : 44, div2: 26, total: 52, cust: s.buyerName ? 34 : 0, paid: 34, bal: hasBal ? 70 : 0, date: 38, foot: 60, bottom: 30 };
+  const H = Object.values(seg).reduce((a, b) => a + b, 0);
+  const c = document.createElement('canvas');
+  c.width = W * SCALE; c.height = H * SCALE;
+  const x = c.getContext('2d'); x.scale(SCALE, SCALE);
+  const trunc = (t, n) => { t = String(t || ''); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+  x.fillStyle = '#fffdf8'; x.fillRect(0, 0, W, H);
+  x.fillStyle = B.gold; x.fillRect(0, 0, W, 6);
+  let y = seg.top;
+  x.textAlign = 'center';
+  if (logoImg) {
+    const lw = 150, lh = Math.min(lw * (logoImg.height / logoImg.width || 1), 118);
+    x.drawImage(logoImg, (W - lw) / 2, y, lw, lh);
+  } else { x.fillStyle = B.ink; x.font = '600 32px Georgia, serif'; x.fillText(B.name, W / 2, y + 38); }
+  y += seg.logo;
+  x.fillStyle = B.goldDeep; x.font = '600 15px Arial'; x.fillText('S A L E   R E C E I P T', W / 2, y); y += seg.caption;
+  x.fillStyle = B.faint; x.font = '13px Arial'; B.addr.forEach((line, i) => x.fillText(line, W / 2, y + i * 18)); y += seg.addr;
+  const div = () => { x.strokeStyle = B.line; x.lineWidth = 1; x.beginPath(); x.moveTo(M, y); x.lineTo(W - M, y); x.stroke(); };
+  div(); y += seg.div1;
+  x.textAlign = 'left'; x.fillStyle = B.ink; x.font = '600 18px Arial'; x.fillText(trunc(s.name, 32), M, y + 6);
+  if (subLine) {
+    x.fillStyle = B.faint; x.font = '14px Arial'; x.fillText(subLine, M, y + 30);
+    x.textAlign = 'right'; x.fillStyle = B.ink; x.font = '600 18px Arial'; x.fillText(fmtKsh(total), W - M, y + 30);
+  } else { x.textAlign = 'right'; x.fillStyle = B.ink; x.font = '600 18px Arial'; x.fillText(fmtKsh(total), W - M, y + 6); }
+  y += seg.item;
+  x.textAlign = 'left'; div(); y += seg.div2;
+  x.fillStyle = B.ink; x.font = '700 22px Arial'; x.fillText('TOTAL', M, y + 8);
+  x.textAlign = 'right'; x.fillStyle = B.goldDeep; x.font = '700 24px Arial'; x.fillText(fmtKsh(total), W - M, y + 8); y += seg.total;
+  if (s.buyerName) {
+    x.textAlign = 'left'; x.fillStyle = B.inkSoft; x.font = '15px Arial'; x.fillText('Customer', M, y);
+    x.textAlign = 'right'; x.fillStyle = B.ink; x.font = '600 15px Arial'; x.fillText(trunc(s.buyerName, 26), W - M, y); y += seg.cust;
+  }
+  x.textAlign = 'left'; x.fillStyle = B.inkSoft; x.font = '15px Arial'; x.fillText('Paid by', M, y);
+  x.textAlign = 'right'; x.fillStyle = B.ink; x.font = '600 15px Arial'; x.fillText(s.paymentMethod === 'mpesa' ? 'M-Pesa' : 'Cash', W - M, y); y += seg.paid;
+  if (hasBal) {
+    x.textAlign = 'left'; x.fillStyle = B.inkSoft; x.font = '15px Arial'; x.fillText('Paid now', M, y);
+    x.textAlign = 'right'; x.fillStyle = B.ink; x.font = '600 15px Arial'; x.fillText(fmtKsh(s.paid), W - M, y); y += 34;
+    x.textAlign = 'left'; x.fillStyle = '#b00020'; x.font = '700 16px Arial'; x.fillText('BALANCE OWING', M, y);
+    x.textAlign = 'right'; x.fillText(fmtKsh(s.balance), W - M, y); y += 36;
+  }
+  x.textAlign = 'center'; x.fillStyle = B.faint; x.font = '13px Arial';
+  x.fillText(new Date(s.soldAt || Date.now()).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }), W / 2, y); y += seg.date;
+  x.fillStyle = B.goldDeep; x.font = 'italic 16px Georgia, serif'; x.fillText('Thank you for shopping with us', W / 2, y);
+  x.fillStyle = B.gold; x.font = '600 13px Arial'; x.fillText(B.url, W / 2, y + 24);
+  return c;
+}
+async function posShareReceiptImage() {
+  if (!lastPosSale) return;
+  const btn = document.getElementById('posImgReceiptBtn');
+  const orig = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
+  try {
+    const logo = await loadReceiptLogo();
+    const canvas = buildReceiptCanvas(lastPosSale, logo, RCPT_BRAND);
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+    if (!blob) throw new Error('render failed');
+    const fname = `panache-receipt-${(lastPosSale.name || 'sale').replace(/[^a-z0-9]+/gi, '-').toLowerCase().slice(0, 28)}.png`;
+    const file = new File([blob], fname, { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: RCPT_BRAND.name + ' receipt', text: posReceiptText(lastPosSale) });
+    } else {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = fname;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      showToast('Receipt image saved to your phone — attach it in WhatsApp.');
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;
+    showToast('Could not make the receipt image: ' + (e.message || e));
+  } finally { if (btn) { btn.disabled = false; btn.textContent = orig; } }
 }
 function recordPosSale() {
   const targetId = posItemId;
@@ -2228,6 +2424,7 @@ document.getElementById('posRecordBtn')?.addEventListener('click', recordPosSale
 document.getElementById('posCancelBtn')?.addEventListener('click', posReset);
 document.getElementById('posNewSaleBtn')?.addEventListener('click', posReset);
 document.getElementById('posPrintReceiptBtn')?.addEventListener('click', posPrintReceipt);
+document.getElementById('posImgReceiptBtn')?.addEventListener('click', posShareReceiptImage);
 
 // ===== Mobile-safe collapsible toggles (fleet rollout 2026-06-11) =====
 // JS-driven (preventDefault + flip .open) — a <summary> with display:flex breaks

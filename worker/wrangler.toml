@@ -9,3 +9,10 @@ id = "4a9453fda8b1487ba69556f0aabedbad"
 
 [ai]
 binding = "AI"
+
+# IG auto-sync — three times a day (built 2026-06-17). Panache's fleet stagger
+# offset is :30 (Iman :00, Ryker :10, ThriftLux :20). 6:30 UTC = 9:30 EAT
+# (morning), 10:30 UTC = 13:30 EAT (afternoon), 16:30 UTC = 19:30 EAT (evening).
+# Panache has no daily-report cron, so scheduled() routes every cron to auto-sync.
+[triggers]
+crons = ["30 6 * * *", "30 10 * * *", "30 16 * * *"]
