@@ -724,6 +724,8 @@ export default {
       }
       // The manually-added clients list is owner-only CRM PII — never public.
       if (!admin && data.clients) delete data.clients;
+      // Expenses are the owner's private books (ad spend, costs) — never public.
+      if (!admin && data.expenses) delete data.expenses;
       return json(data, 200, admin ? { "Cache-Control": "no-store" } : { "Cache-Control": "public, max-age=10" });
     }
 
@@ -782,6 +784,8 @@ export default {
       if (!Array.isArray(body.items)) return json({ error: "items must be an array" }, 400);
       const payload = { items: body.items, settings: body.settings || {} };
       if (Array.isArray(body.clients)) payload.clients = body.clients;
+      // Operating expenses (ad spend, packaging, etc.) — admin-only records ledger.
+      if (Array.isArray(body.expenses)) payload.expenses = body.expenses;
       await putData(env, payload);
       // Tombstone every IG-sourced item in this save so the auto-sync cron can't
       // re-add one the owner later deletes (Panache's manual sync commits here).

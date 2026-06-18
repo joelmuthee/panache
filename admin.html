@@ -72,6 +72,7 @@
     <a href="#broadcastDash">WhatsApp Marketing</a>
     <a href="#clientsDash" id="clientsNavLink">Clients <span class="admin-nav-count" id="navClientsCount"></span><span class="admin-nav-new" id="clientsNavNew">NEW</span></a>
     <a href="#owedDash" id="owedNavLink">Owed <span class="admin-nav-count" id="navOwedCount"></span><span class="admin-nav-new" id="owedNavNew">NEW</span></a>
+    <a href="#expensesDash">Expenses <span class="admin-nav-new">NEW</span></a>
     <a href="#insightsDash">Insights</a>
     <a href="#allItems">All items <span class="admin-nav-count" id="navItemCount"></span></a>
   </nav>
@@ -242,6 +243,49 @@
       <input type="search" id="owedSearch" placeholder="Search by name or phone…" autocomplete="off">
     </div>
     <div id="owedList" class="clients-list"></div>
+  </section>
+
+  <!-- ====== EXPENSES ====== -->
+  <section class="dash" id="expensesDash">
+    <details class="dash-collapse" id="expensesCollapse">
+    <summary class="dash-summary"><h2 class="dash-title">Expenses</h2></summary>
+    <p style="font-size:13px;color:var(--ink-soft);margin:-8px 0 16px;">Track what you spend running the shop — Instagram ads, packaging, transport. See your real profit after costs on the Sales dashboard. These figures are private and never shown on your store.</p>
+    <div class="inv-kpi-grid" id="expKpiGrid"></div>
+    <details id="expFormWrap" style="margin:16px 0;border:1px solid #ece6dc;border-radius:10px;background:#fffdf8;">
+      <summary style="cursor:pointer;padding:12px 14px;font-weight:600;color:#1c1208;list-style:none;">+ Add an expense</summary>
+      <div style="padding:0 14px 16px;">
+        <div class="field"><label>What was it for?</label><input id="expLabel" type="text" placeholder="e.g. Instagram ads" autocomplete="off"></div>
+        <div class="pos-row" style="display:flex;gap:12px;flex-wrap:wrap;">
+          <div class="field" style="flex:1 1 140px;"><label>Amount (Ksh)</label><input id="expAmount" type="number" min="0" step="50" placeholder="0"></div>
+          <div class="field" style="flex:1 1 160px;"><label>Category</label><select id="expCategory"></select><input id="expCategoryNew" type="text" placeholder="New category name" style="display:none;margin-top:6px;" autocomplete="off"></div>
+        </div>
+        <div class="field">
+          <label>Type</label>
+          <div class="pos-pay" id="expTypeToggle">
+            <button type="button" class="pos-pay-btn active" data-exptype="oneoff">One-off</button>
+            <button type="button" class="pos-pay-btn" data-exptype="recurring">Recurring</button>
+          </div>
+        </div>
+        <div id="expOneoffFields">
+          <div class="field"><label>Date</label><input id="expDate" type="date"></div>
+        </div>
+        <div id="expRecurringFields" style="display:none;">
+          <div class="pos-row" style="display:flex;gap:12px;flex-wrap:wrap;">
+            <div class="field" style="flex:1 1 140px;"><label>Every</label><select id="expCadence"><option value="daily">Day</option><option value="weekly">Week</option><option value="monthly">Month</option></select></div>
+            <div class="field" style="flex:1 1 160px;"><label>Started on</label><input id="expStartDate" type="date"></div>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;color:#4a4540;margin:2px 0 6px;"><input id="expActive" type="checkbox" checked style="width:auto;"> Still running (untick when you stop this spend)</label>
+          <p style="font-size:12px;color:#8a857f;margin:0 0 6px;">Recurring spend is an estimate that grows automatically. For Instagram, where Meta deducts different amounts every few days, logging each actual deduction as a one-off is more exact.</p>
+        </div>
+        <div class="field"><label>Note (optional)</label><input id="expNote" type="text" placeholder="optional" autocomplete="off"></div>
+        <div class="admin-actions">
+          <button class="btn-admin primary" id="expSaveBtn" type="button">Save expense</button>
+          <button class="btn-admin" id="expCancelBtn" type="button">Cancel</button>
+        </div>
+      </div>
+    </details>
+    <div id="expList" class="clients-list"></div>
+    </details>
   </section>
 
   <!-- ====== INSIGHTS ====== -->
@@ -662,6 +706,6 @@
   </div>
 </div>
 
-<script src="admin.js?v=20260617desc"></script>
+<script src="admin.js?v=20260618exp"></script>
 </body>
 </html>
