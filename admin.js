@@ -824,6 +824,8 @@ document.getElementById('saleSaveBtn').addEventListener('click', () => {
   renderList();
   renderDashboard();
   renderInventory();
+  if (typeof renderClients === 'function') renderClients();
+  if (typeof renderOwed === 'function') renderOwed();
   showToast(`Sale recorded — ${qty}× EU ${size} sold.`);
   lastPosSale = { name: item.name, size, qty, amount: salePrice, paymentMethod: payMethod, buyerName: bName, buyerPhone: bPhone, soldAt };
   showPosReceipt(lastPosSale);
@@ -2620,7 +2622,7 @@ function recordPosSale() {
     else clients.push({ id: 'c_' + Date.now(), name: name || '', phone, note: '', createdAt: soldAt });
   }
   saveData();
-  renderList(); renderDashboard(); renderInventory(); if (typeof renderClients === 'function') renderClients();
+  renderList(); renderDashboard(); renderInventory(); if (typeof renderClients === 'function') renderClients(); if (typeof renderOwed === 'function') renderOwed();
   lastPosSale = { name: it.name, size, qty, amount, paymentMethod: posPayMethod, buyerName: name, buyerPhone: phone, soldAt };
   showPosReceipt(lastPosSale);
   showToast(`Sold ${qty}× EU ${size} · ${fmtKsh(amount * qty)}`);
