@@ -227,6 +227,10 @@ function parseCaptionForBag(caption) {
   }
   // Panache uses stock: {EU_size_string: qty} — matching admin's schema. Sizes
   // 35-46 covers women's footwear and the rare men's listings.
+  // New products start at 3 of each size FOUND in the caption (owner restocks
+  // from there). The "One Size" fallback below stays at 1 — it's a "no size
+  // info" placeholder, not a size the caption actually provided.
+  const NEW_SIZE_QTY = 3;
   const stock = {};
 
   // Multi-size patterns first: "sizes 36, 37, 38" / "EU 36/37/38".
@@ -236,7 +240,7 @@ function parseCaptionForBag(caption) {
       const m = part.match(/(\d{2})/);
       if (m) {
         const n = +m[1];
-        if (n >= 35 && n <= 46) stock[String(n)] = 1;
+        if (n >= 35 && n <= 46) stock[String(n)] = NEW_SIZE_QTY;
       }
     });
   }
@@ -245,7 +249,7 @@ function parseCaptionForBag(caption) {
   if (range && !Object.keys(stock).length) {
     const a = +range[1], b = +range[2];
     if (a >= 35 && b <= 46 && b - a < 12) {
-      for (let n = a; n <= b; n++) stock[String(n)] = 1;
+      for (let n = a; n <= b; n++) stock[String(n)] = NEW_SIZE_QTY;
     }
   }
   // Single "#38", "EU 38", "Size 38", "38eu" patterns — only if multi missed.
@@ -255,7 +259,7 @@ function parseCaptionForBag(caption) {
       const m = s.match(/(\d{2})/);
       if (m) {
         const n = +m[1];
-        if (n >= 35 && n <= 46) stock[String(n)] = 1;
+        if (n >= 35 && n <= 46) stock[String(n)] = NEW_SIZE_QTY;
       }
     });
   }
