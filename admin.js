@@ -778,6 +778,8 @@ function openSaleModal(id) {
 
   document.getElementById('saleQtyInput').value = 1;
   document.getElementById('salePriceInput').value = item.price;
+  document.getElementById('salePriceInput').dataset.list = item.price;
+  document.getElementById('saleDiscountInput').value = '';
   document.getElementById('buyerName').value = '';
   document.getElementById('buyerPhone').value = '';
   document.getElementById('buyerNotes').value = '';
@@ -793,7 +795,9 @@ document.getElementById('saleSaveBtn').addEventListener('click', () => {
   if (!item) return;
   const size = document.getElementById('saleSizeInput').value;
   const qty = parseInt(document.getElementById('saleQtyInput').value, 10) || 1;
-  const salePrice = parseInt(document.getElementById('salePriceInput').value, 10) || item.price;
+  const salePrice = parseInt(document.getElementById('salePriceInput').value, 10) || item.price; // already discounted (net)
+  const discount = Math.max(0, parseInt(document.getElementById('saleDiscountInput').value, 10) || 0);
+  const listPrice = parseInt(document.getElementById('salePriceInput').dataset.list, 10) || (salePrice + discount);
   const payMethod = document.querySelector('#saleModalPay .pos-pay-btn.active')?.dataset.pay || 'mpesa';
   const bName = document.getElementById('buyerName').value.trim();
   const bPhone = document.getElementById('buyerPhone').value.trim();
@@ -806,7 +810,7 @@ document.getElementById('saleSaveBtn').addEventListener('click', () => {
   // Owed feature: capture cash actually taken at the moment of sale.
   // Blank = paid in full (don't write amountPaid → historical sales stay paid).
   const _saleRec = {
-    size, qty, salePrice, paymentMethod: payMethod, channel: 'shop',
+    size, qty, salePrice, ...(discount > 0 ? { discount, listPrice } : {}), paymentMethod: payMethod, channel: 'shop',
     buyerName: bName,
     buyerPhone: bPhone,
     notes: document.getElementById('buyerNotes').value.trim(),
@@ -1409,6 +1413,7 @@ function _renderDashboardInner() {
             </div>
           </div>
           <div class="recent-actions">
+            <button onclick="reissueReceipt('${item.id}','${s.soldAt}')">🧾 Receipt</button>
             <button onclick="openEditSale('${item.id}','${s.soldAt}')">Edit</button>
             <button class="danger" onclick="undoSale('${item.id}','${s.soldAt}')">Undo</button>
           </div>
@@ -1859,6 +1864,22 @@ window.editItem = editItem;
 window.deleteItem = deleteItem;
 window.openSaleModal = openSaleModal;
 window.openRestockModal = openRestockModal;
+window.reissueReceipt = (itemId, soldAt) => {
+  const item = items.find(i => i.id === itemId);
+  const s = item && (item.sales || []).find(x => x.soldAt === soldAt);
+  if (!item || !s) { showToast('Could not find that sale.'); return; }
+  const qty = Number(s.qty) || 1;
+  const amount = Number(s.salePrice || item.price) || 0;
+  const balance = saleBalance(item, s);
+  lastPosSale = {
+    name: item.name, size: s.size || '', qty, amount,
+    paid: (amount * qty) - balance, balance,
+    paymentMethod: s.paymentMethod, buyerName: s.buyerName, buyerPhone: s.buyerPhone, soldAt: s.soldAt,
+  };
+  showPosReceipt(lastPosSale);
+  document.getElementById('posDash').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  showToast('Receipt ready — send it on WhatsApp or as an image below.');
+};
 window.undoSale = undoSale;
 window.openEditSale = openEditSale;
 window.bulkClear = bulkClear;
@@ -2443,7 +2464,10 @@ function posSelectItem(id) {
   if (inStock.length) inStock.forEach(([sz, q]) => { const o = document.createElement('option'); o.value = sz; o.textContent = `EU ${sz} (${q} in stock)`; sizeSel.appendChild(o); });
   else { const o = document.createElement('option'); o.value = 'One size'; o.textContent = 'One size'; sizeSel.appendChild(o); }
   document.getElementById('posQty').value = 1;
-  document.getElementById('posPrice').value = (it.salePrice > 0 && it.salePrice < it.price) ? it.salePrice : (it.price || '');
+  const posPriceEl = document.getElementById('posPrice');
+  posPriceEl.value = (it.salePrice > 0 && it.salePrice < it.price) ? it.salePrice : (it.price || '');
+  posPriceEl.dataset.list = posPriceEl.value;
+  document.getElementById('posDiscount').value = '';
   document.getElementById('posChosen').innerHTML = `Selling <strong>${escapeHtml(it.name)}</strong> · <button type="button" id="posClearItem">change</button>`;
   document.getElementById('posChosen').style.display = '';
   document.getElementById('posSaleFields').style.display = '';
@@ -2461,14 +2485,16 @@ function posReset() {
 }
 function posReceiptText(s) {
   const total = s.amount * s.qty;
-  return [`*The Panache Store* receipt`, `${s.name} (EU ${s.size}) x${s.qty}`, `Total: ${fmtKsh(total)}. Paid by ${s.paymentMethod === 'mpesa' ? 'M-Pesa' : 'Cash'}.`, `Thank you for shopping with us!`].join('\n');
+  const discLine = s.discount > 0 ? [`Discount: ${fmtKsh(s.discount)} off (was ${fmtKsh((s.listPrice || s.amount) * s.qty)}).`] : [];
+  return [`*The Panache Store* receipt`, `${s.name} (EU ${s.size}) x${s.qty}`, `Total: ${fmtKsh(total)}. Paid by ${s.paymentMethod === 'mpesa' ? 'M-Pesa' : 'Cash'}.`, ...discLine, `Thank you for shopping with us!`].join('\n');
 }
 function showPosReceipt(s) {
   document.getElementById('posSaleFields').style.display = 'none';
   document.getElementById('posChosen').style.display = 'none';
   document.getElementById('posItemSearch').value = '';
   const total = s.amount * s.qty; const pay = s.paymentMethod === 'mpesa' ? 'M-Pesa' : 'Cash';
-  document.getElementById('posReceiptSummary').innerHTML = `<strong>${escapeHtml(s.name)}</strong> · EU ${escapeHtml(String(s.size))} · ${s.qty} pair(s)<br>${fmtKsh(total)} · paid by ${pay}`;
+  const discLine = s.discount > 0 ? `<br><span style="color:#1a7a3a;">Discount ${fmtKsh(s.discount)} off (was ${fmtKsh((s.listPrice || s.amount) * s.qty)})</span>` : '';
+  document.getElementById('posReceiptSummary').innerHTML = `<strong>${escapeHtml(s.name)}</strong> · EU ${escapeHtml(String(s.size))} · ${s.qty} pair(s)<br>${fmtKsh(total)} · paid by ${pay}${discLine}`;
   const wa = document.getElementById('posWaReceiptBtn');
   if (s.buyerPhone && s.buyerPhone.replace(/[^0-9]/g, '').length >= 9) { wa.href = `https://wa.me/${posWaPhone(s.buyerPhone)}?text=${encodeURIComponent(posReceiptText(s))}`; wa.style.display = ''; }
   else { wa.style.display = 'none'; }
@@ -2600,14 +2626,16 @@ function recordPosSale() {
   const size = document.getElementById('posSize').value;
   const qty = parseInt(document.getElementById('posQty').value, 10) || 1;
   const priceRaw = parseInt(document.getElementById('posPrice').value, 10);
-  const amount = isNaN(priceRaw) ? (Number(it.price) || 0) : priceRaw;
+  const amount = isNaN(priceRaw) ? (Number(it.price) || 0) : priceRaw; // already discounted (net)
+  const discount = Math.max(0, parseInt(document.getElementById('posDiscount').value, 10) || 0);
+  const listPrice = parseInt(document.getElementById('posPrice').dataset.list, 10) || (amount + discount);
   const name = document.getElementById('posBuyerName').value.trim();
   const phone = document.getElementById('posBuyerPhone').value.trim().replace(/[^0-9+]/g, '');
   const soldAt = new Date().toISOString();
   if (it.stock && it.stock[size] !== undefined) it.stock[size] = Math.max(0, it.stock[size] - qty);
   if (!it.sales) it.sales = [];
   // Owed feature: capture cash now (blank = paid in full)
-  const _posSaleRec = { size, qty, salePrice: amount, paymentMethod: posPayMethod, channel: 'shop', buyerName: name, buyerPhone: phone, notes: '', soldAt };
+  const _posSaleRec = { size, qty, salePrice: amount, ...(discount > 0 ? { discount, listPrice } : {}), paymentMethod: posPayMethod, channel: 'shop', buyerName: name, buyerPhone: phone, notes: '', soldAt };
   const _posPaidRaw = (document.getElementById('posPaid')?.value || '').trim();
   if (_posPaidRaw !== '') {
     const _posTotalNow = (Number(amount) || 0) * (Number(qty) || 1);
@@ -2623,7 +2651,7 @@ function recordPosSale() {
   }
   saveData();
   renderList(); renderDashboard(); renderInventory(); if (typeof renderClients === 'function') renderClients(); if (typeof renderOwed === 'function') renderOwed();
-  lastPosSale = { name: it.name, size, qty, amount, paymentMethod: posPayMethod, buyerName: name, buyerPhone: phone, soldAt };
+  lastPosSale = { name: it.name, size, qty, amount, discount, listPrice, paymentMethod: posPayMethod, buyerName: name, buyerPhone: phone, soldAt };
   showPosReceipt(lastPosSale);
   showToast(`Sold ${qty}× EU ${size} · ${fmtKsh(amount * qty)}`);
 }
@@ -2860,3 +2888,29 @@ document.getElementById('posPaidNone')?.addEventListener('click', () => {
   document.getElementById('posPaid').value = '0';
   syncPaid('posPrice', 'posQty', 'posPaid', 'posPaidHint', 'posPaidNone');
 });
+
+// Discount: subtract from the list price (held in dataset.list) and write the net
+// into the Selling price field, so the RECORDED salePrice is the discounted price
+// — no phantom debt. Then re-run syncPaid so "paid in full" reflects the new total.
+function applyDiscount(priceId, discId, qtyId, paidId, hintId, btnId) {
+  const priceEl = document.getElementById(priceId);
+  const discEl = document.getElementById(discId);
+  if (!priceEl || !discEl) return;
+  const list = parseInt(priceEl.dataset.list || priceEl.value, 10) || 0;
+  const disc = Math.max(0, parseInt(discEl.value, 10) || 0);
+  priceEl.value = Math.max(0, list - disc);
+  syncPaid(priceId, qtyId, paidId, hintId, btnId);
+}
+// Manual price edits rebaseline the list price, but only while no discount is applied.
+function rebaseList(priceId, discId) {
+  const priceEl = document.getElementById(priceId);
+  const discEl = document.getElementById(discId);
+  if (!priceEl || !discEl) return;
+  if ((discEl.value || '').trim() === '' || parseInt(discEl.value, 10) === 0) priceEl.dataset.list = priceEl.value;
+}
+document.getElementById('saleDiscountInput')?.addEventListener('input',
+  () => applyDiscount('salePriceInput', 'saleDiscountInput', 'saleQtyInput', 'salePaidInput', 'salePaidHint', 'salePaidNone'));
+document.getElementById('posDiscount')?.addEventListener('input',
+  () => applyDiscount('posPrice', 'posDiscount', 'posQty', 'posPaid', 'posPaidHint', 'posPaidNone'));
+document.getElementById('salePriceInput')?.addEventListener('input', () => rebaseList('salePriceInput', 'saleDiscountInput'));
+document.getElementById('posPrice')?.addEventListener('input', () => rebaseList('posPrice', 'posDiscount'));
