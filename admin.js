@@ -2536,19 +2536,39 @@ function acRenderResults(q) {
     : '<div class="client-item-empty">No items match.</div>';
   box.style.display = '';
 }
+// Fill the Add-client size dropdown — colour-aware when a colour is chosen.
+function acFillSizes(it, color) {
+  const sizeSel = document.getElementById('addClientSize');
+  sizeSel.innerHTML = '';
+  let inStock;
+  if (color && itemHasColorStock(it)) {
+    inStock = colorAvailSizes(it, color).map(sz => [sz, it.stockByColor[color][sz]]);
+  } else {
+    inStock = Object.entries(it.stock || {}).filter(([, q]) => q > 0);
+  }
+  if (inStock.length) {
+    inStock.forEach(([sz, q]) => { const o = document.createElement('option'); o.value = sz; o.textContent = `EU ${sz} (${q} in stock)`; sizeSel.appendChild(o); });
+  } else {
+    const o = document.createElement('option'); o.value = 'One size'; o.textContent = 'One size'; sizeSel.appendChild(o);
+  }
+}
 function acSelectItem(id) {
   const it = items.find(x => x.id === id);
   if (!it) return;
   acItemId = id;
   document.getElementById('addClientItemSearch').value = it.name;
   document.getElementById('addClientItemResults').style.display = 'none';
-  const sizeSel = document.getElementById('addClientSize');
-  sizeSel.innerHTML = '';
-  const inStock = Object.entries(it.stock || {}).filter(([, q]) => q > 0);
-  if (inStock.length) {
-    inStock.forEach(([sz, q]) => { const o = document.createElement('option'); o.value = sz; o.textContent = `EU ${sz} (${q} in stock)`; sizeSel.appendChild(o); });
+  const colorField = document.getElementById('addClientColorField');
+  const colorSel = document.getElementById('addClientColor');
+  const cols = itemColors(it);
+  if (cols.length) {
+    const opts = itemHasColorStock(it) ? colorsWithStock(it) : cols;
+    colorSel.innerHTML = opts.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+    colorField.style.display = '';
+    acFillSizes(it, opts[0] || '');
   } else {
-    const o = document.createElement('option'); o.value = 'One size'; o.textContent = 'One size'; sizeSel.appendChild(o);
+    colorField.style.display = 'none';
+    acFillSizes(it, '');
   }
   document.getElementById('addClientQty').value = 1;
   document.getElementById('addClientPrice').value = it.price || 0;
@@ -2588,6 +2608,10 @@ document.getElementById('addClientItemResults')?.addEventListener('click', e => 
 document.getElementById('addClientChosen')?.addEventListener('click', e => {
   if (e.target.id === 'addClientClearItem') acClearItem();
 });
+document.getElementById('addClientColor')?.addEventListener('change', e => {
+  const it = items.find(x => x.id === acItemId);
+  if (it) acFillSizes(it, e.target.value);
+});
 document.getElementById('addClientSaveBtn')?.addEventListener('click', () => {
   const name = document.getElementById('addClientName').value.trim();
   const phone = document.getElementById('addClientPhone').value.trim().replace(/[^0-9+]/g, '');
@@ -2606,9 +2630,15 @@ document.getElementById('addClientSaveBtn')?.addEventListener('click', () => {
       const size = document.getElementById('addClientSize').value;
       const qty = parseInt(document.getElementById('addClientQty').value, 10) || 1;
       const salePrice = parseInt(document.getElementById('addClientPrice').value, 10) || it.price;
-      if (it.stock && it.stock[size] !== undefined) it.stock[size] = Math.max(0, it.stock[size] - qty);
+      const color = (document.getElementById('addClientColorField').style.display !== 'none') ? document.getElementById('addClientColor').value : '';
+      if (color && itemHasColorStock(it) && it.stockByColor[color]?.[size] !== undefined) {
+        it.stockByColor[color][size] = Math.max(0, it.stockByColor[color][size] - qty);
+        it.stock = aggregateStock(it.stockByColor);
+      } else if (it.stock && it.stock[size] !== undefined) {
+        it.stock[size] = Math.max(0, it.stock[size] - qty);
+      }
       if (!it.sales) it.sales = [];
-      it.sales.push({ size, qty, salePrice, buyerName: name, buyerPhone: phone, notes: note, soldAt: new Date().toISOString() });
+      it.sales.push({ size, color, qty, salePrice, buyerName: name, buyerPhone: phone, notes: note, soldAt: new Date().toISOString() });
     }
   }
   saveData();
