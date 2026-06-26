@@ -496,6 +496,162 @@ function addCustomSizeRow(sizeVal = '', qtyVal = '') {
 
 document.getElementById('addCustomSizeBtn')?.addEventListener('click', () => addCustomSizeRow());
 
+// ===== Stock per colour & size (colour items) =====
+// Colours are an optional, comma-separated list on the item (item.colors).
+// When present, stock is tracked per colour AND size in item.stockByColor:
+//   { "Black": { "37": 3, "38": 2 }, "Nude": { "38": 1 } }
+// The flat item.stock is kept as the auto-summed AGGREGATE via aggregateStock()
+// so the public site, inventory and sold-out logic stay unchanged.
+function cstkColors() {
+  return (document.getElementById('colorsInput')?.value || '').split(',').map(c => c.trim()).filter(Boolean);
+}
+function cstkSizeList() {
+  const raw = (document.getElementById('cstkSizesInput')?.value || '').split(',').map(s => s.trim()).filter(Boolean);
+  return [...new Set(raw)].sort((a, b) => {
+    const na = parseFloat(a), nb = parseFloat(b);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    return String(a).localeCompare(String(b));
+  });
+}
+// Read the matrix → { colour: { size: qty>0 } }
+function getStockByColorFromForm() {
+  const sbc = {};
+  document.querySelectorAll('#cstkGrid .cstk-qty').forEach(inp => {
+    const c = inp.dataset.color, s = inp.dataset.size, v = parseInt(inp.value, 10);
+    if (c && s && !isNaN(v) && v > 0) (sbc[c] = sbc[c] || {})[s] = v;
+  });
+  return sbc;
+}
+// Flat aggregate { size: total } summed across colours — kept for public/inventory.
+function aggregateStock(sbc) {
+  const agg = {};
+  Object.values(sbc || {}).forEach(sizes =>
+    Object.entries(sizes).forEach(([s, q]) => { agg[s] = (agg[s] || 0) + (Number(q) || 0); }));
+  return agg;
+}
+// Colours on an item (trimmed labels). Source of the sale-modal colour picker.
+function itemColors(item) {
+  return Array.isArray(item.colors) ? item.colors.map(c => String(c).trim()).filter(Boolean) : [];
+}
+// Does this item track stock per colour+size?
+function itemHasColorStock(item) {
+  return Array.isArray(item.colors) && item.colors.length > 0 && item.stockByColor && typeof item.stockByColor === 'object';
+}
+// Colours that still have at least one size in stock.
+function colorsWithStock(item) {
+  return (item.colors || []).filter(c => Object.values((item.stockByColor || {})[c] || {}).some(q => (q || 0) > 0));
+}
+// Sizes in stock for a given colour.
+function colorAvailSizes(item, color) {
+  return Object.entries(((item.stockByColor || {})[color]) || {}).filter(([, q]) => (q || 0) > 0).map(([s]) => s);
+}
+// Fill the per-card sale modal's size dropdown for the chosen colour.
+function fillSaleSizesForColor(item, color) {
+  const saleSizeInput = document.getElementById('saleSizeInput');
+  saleSizeInput.innerHTML = '';
+  colorAvailSizes(item, color).forEach(sz => {
+    const q = item.stockByColor[color][sz];
+    const opt = document.createElement('option'); opt.value = sz; opt.textContent = `EU ${sz} (${q} in stock)`;
+    saleSizeInput.appendChild(opt);
+  });
+}
+// Fill the POS size dropdown for the chosen colour.
+function fillPosSizesForColor(item, color) {
+  const sizeSel = document.getElementById('posSize');
+  sizeSel.innerHTML = '';
+  colorAvailSizes(item, color).forEach(sz => {
+    const q = item.stockByColor[color][sz];
+    const o = document.createElement('option'); o.value = sz; o.textContent = `EU ${sz} (${q} in stock)`;
+    sizeSel.appendChild(o);
+  });
+}
+// Ensure item.stockByColor exists for a colour item — seed it from the existing
+// flat stock under the FIRST colour so a legacy colour-LABEL item migrates without
+// losing stock. Call before writing per-colour stock.
+function ensureStockByColor(item) {
+  if (item.stockByColor && Object.keys(item.stockByColor).length) return;
+  const flat = {};
+  Object.entries(item.stock || {}).forEach(([s, q]) => { if (q > 0 && s !== 'One size') flat[s] = q; });
+  const first = (item.colors || [])[0];
+  item.stockByColor = (first && Object.keys(flat).length) ? { [first]: flat } : {};
+}
+// Current units for a colour+size in the restock modal — mirrors the seed above
+// (flat stock counts as the first colour) WITHOUT mutating the item.
+function restockCurrent(item, color, size) {
+  if (item.stockByColor && Object.keys(item.stockByColor).length) {
+    return (item.stockByColor[color] && item.stockByColor[color][size]) || 0;
+  }
+  const first = (item.colors || [])[0];
+  if (color === first && size !== 'One size') return item.stock?.[size] || 0;
+  return 0;
+}
+const RESTOCK_ALL_SIZES = ['35','36','37','38','39','40','41','42','43','44','45'];
+// Fill the restock size dropdown showing the current count for the chosen colour.
+function fillRestockSizes(item, color) {
+  const sizeSel = document.getElementById('restockSizeInput');
+  sizeSel.innerHTML = '';
+  RESTOCK_ALL_SIZES.forEach(sz => {
+    const cur = color ? restockCurrent(item, color, sz) : (item.stock?.[sz] || 0);
+    const opt = document.createElement('option'); opt.value = sz; opt.textContent = `EU ${sz} (currently ${cur})`;
+    sizeSel.appendChild(opt);
+  });
+}
+function buildColorStockGrid(existing) {
+  const grid = document.getElementById('cstkGrid');
+  if (!grid) return;
+  const colors = cstkColors(), sizes = cstkSizeList();
+  if (!colors.length) { grid.innerHTML = '<p style="font-size:12px;color:#999;">Add colours in the field above first.</p>'; return; }
+  if (!sizes.length) { grid.innerHTML = '<p style="font-size:12px;color:#999;">Type the sizes above (e.g. 37, 38, 39), then tap <strong>Build grid</strong>.</p>'; return; }
+  let html = '<table class="cstk-table"><thead><tr><th>Colour</th>' + sizes.map(s => `<th>${escapeHtml(s)}</th>`).join('') + '</tr></thead><tbody>';
+  colors.forEach(col => {
+    html += `<tr><td class="cstk-color">${escapeHtml(col)}</td>` + sizes.map(s => {
+      const v = (existing && existing[col] && existing[col][s] > 0) ? existing[col][s] : '';
+      return `<td><input type="number" min="0" step="1" class="cstk-qty" data-color="${escapeHtml(col)}" data-size="${escapeHtml(s)}" value="${v}"></td>`;
+    }).join('') + '</tr>';
+  });
+  grid.innerHTML = html + '</tbody></table>';
+}
+// Toggle flat grid vs colour matrix based on whether colours are set.
+function colorStockToggle() {
+  const has = cstkColors().length > 0;
+  const flat = document.getElementById('flatStockSection');
+  const panel = document.getElementById('colorStockPanel');
+  if (flat) flat.style.display = has ? 'none' : '';
+  if (panel) panel.style.display = has ? '' : 'none';
+  if (has) buildColorStockGrid(getStockByColorFromForm());
+}
+function setColorStockToForm(item) {
+  let sbc = item.stockByColor;
+  // Legacy colour-LABEL item (colours but no per-colour stock yet): seed the grid
+  // from the existing flat stock under the first colour, so editing never wipes it.
+  if (!sbc || !Object.keys(sbc).length) {
+    const flat = {};
+    Object.entries(item.stock || {}).forEach(([s, q]) => { if (q > 0 && s !== 'One size') flat[s] = q; });
+    const firstColor = (item.colors || [])[0];
+    sbc = (firstColor && Object.keys(flat).length) ? { [firstColor]: flat } : {};
+  }
+  const sizeSet = new Set();
+  Object.values(sbc).forEach(sizes => Object.keys(sizes).forEach(s => sizeSet.add(s)));
+  const sizesInput = document.getElementById('cstkSizesInput');
+  if (sizesInput) sizesInput.value = [...sizeSet].sort((a, b) => {
+    const na = parseFloat(a), nb = parseFloat(b);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    return String(a).localeCompare(String(b));
+  }).join(', ');
+  buildColorStockGrid(sbc);
+}
+document.getElementById('colorsInput')?.addEventListener('input', colorStockToggle);
+document.getElementById('cstkBuildBtn')?.addEventListener('click', () => buildColorStockGrid(getStockByColorFromForm()));
+// Sale-modal colour change → repopulate sizes for that colour.
+document.getElementById('saleColorInput')?.addEventListener('change', () => {
+  const item = items.find(i => i.id === pendingSaleId);
+  if (item && itemHasColorStock(item)) fillSaleSizesForColor(item, document.getElementById('saleColorInput').value);
+});
+document.getElementById('posColor')?.addEventListener('change', () => {
+  const item = items.find(i => i.id === posItemId);
+  if (item && itemHasColorStock(item)) fillPosSizesForColor(item, document.getElementById('posColor').value);
+});
+
 // ====== AI DESCRIPTION ======
 document.getElementById('aiBtn').addEventListener('click', () => {
   const name = document.getElementById('nameInput').value.trim();
@@ -548,7 +704,12 @@ function saveItem() {
   const desc = document.getElementById('descInput').value.trim();
   const cat = getCategoryValue();
   const postUrl = document.getElementById('postUrlInput').value.trim();
-  const stock = getStockFromForm();
+  const colors = (document.getElementById('colorsInput')?.value || '')
+    .split(',').map(c => c.trim()).filter(Boolean);
+  // Colour items track stock per colour+size; the flat `stock` is the auto-summed
+  // aggregate (kept so the public site / inventory read it unchanged).
+  const stockByColor = colors.length ? getStockByColorFromForm() : null;
+  const stock = colors.length ? aggregateStock(stockByColor) : getStockFromForm();
 
   if (!name) { showToast('Item name is required.'); return; }
   if (!price || price < 0) { showToast('Enter a valid price.'); return; }
@@ -566,14 +727,23 @@ function saveItem() {
     item.category = cat;
     item.postUrl = postUrl;
     if (cost) item.cost = cost; else delete item.cost;
-    // Merge stock: explicit 0 entries from form should remove size
-    document.querySelectorAll('.stock-qty').forEach(inp => {
-      const sz = inp.dataset.size;
-      const val = parseInt(inp.value, 10);
-      if (!isNaN(val) && val === 0) delete item.stock[sz];
-      else if (inp.value === '') delete item.stock[sz];
-      else if (val > 0) item.stock[sz] = val;
-    });
+    if (colors.length) item.colors = colors; else delete item.colors;
+    if (colors.length) {
+      // Colour item: stock per colour+size is the source of truth; flat stock = aggregate (replace).
+      item.stockByColor = stockByColor;
+      item.stock = stock;
+    } else {
+      delete item.stockByColor;
+      if (!item.stock) item.stock = {};
+      // Merge stock: explicit 0 entries from form should remove size
+      document.querySelectorAll('.stock-qty').forEach(inp => {
+        const sz = inp.dataset.size;
+        const val = parseInt(inp.value, 10);
+        if (!isNaN(val) && val === 0) delete item.stock[sz];
+        else if (inp.value === '') delete item.stock[sz];
+        else if (val > 0) item.stock[sz] = val;
+      });
+    }
     if (stagedImage) {
       item.image = stagedImage.dataUrl;
     }
@@ -593,6 +763,7 @@ function saveItem() {
       createdAt: new Date().toISOString(),
     };
     if (cost) newItem.cost = cost;
+    if (colors.length) { newItem.colors = colors; newItem.stockByColor = stockByColor; }
     const extraDataUrls = stagedExtras.map(s => s.dataUrl || s.url).filter(Boolean);
     if (extraDataUrls.length) newItem.images = [newItem.image, ...extraDataUrls];
     items.unshift(newItem);
@@ -694,6 +865,10 @@ function resetForm() {
   document.getElementById('priceInput').value = '';
   document.getElementById('postUrlInput').value = '';
   costInput.value = '';
+  { const ci = document.getElementById('colorsInput'); if (ci) ci.value = ''; }
+  { const cstkSizes = document.getElementById('cstkSizesInput'); if (cstkSizes) cstkSizes.value = ''; }
+  { const cstkGrid = document.getElementById('cstkGrid'); if (cstkGrid) cstkGrid.innerHTML = ''; }
+  colorStockToggle();
   clearStockForm();
   imageInput.value = '';
   imagePreview.innerHTML = '';
@@ -724,7 +899,9 @@ function editItem(id) {
   document.getElementById('priceInput').value = item.price;
   document.getElementById('postUrlInput').value = item.postUrl || '';
   costInput.value = item.cost || '';
-  setStockToForm(item.stock || {});
+  { const ci = document.getElementById('colorsInput'); if (ci) ci.value = itemColors(item).join(', '); }
+  if (itemColors(item).length) { setColorStockToForm(item); } else { setStockToForm(item.stock || {}); }
+  colorStockToggle();
   stagedImage = null;
   imagePreview.innerHTML = `<img src="${item.image}" style="max-width:200px;border-radius:8px;">`;
   stagedExtras = ((item.images && item.images.length > 1) ? item.images.slice(1) : []).map(url => ({ url, dataUrl: url }));
@@ -762,18 +939,30 @@ function openSaleModal(id) {
 
   const saleSizeInput = document.getElementById('saleSizeInput');
   saleSizeInput.innerHTML = '';
-  const stock = item.stock || {};
-  const hasSizes = Object.keys(stock).length > 0;
-  if (hasSizes) {
-    Object.entries(stock).filter(([, q]) => q > 0).forEach(([sz, q]) => {
-      const opt = document.createElement('option');
-      opt.value = sz;
-      opt.textContent = `EU ${sz} (${q} in stock)`;
-      saleSizeInput.appendChild(opt);
+  const colorField = document.getElementById('saleColorField');
+  const colorSel = document.getElementById('saleColorInput');
+  const cols = itemColors(item);
+  const stocked = itemHasColorStock(item);
+  const fillFlat = () => {
+    saleSizeInput.innerHTML = '';
+    const stock = item.stock || {};
+    const entries = Object.entries(stock).filter(([, q]) => q > 0);
+    if (entries.length) entries.forEach(([sz, q]) => {
+      const opt = document.createElement('option'); opt.value = sz; opt.textContent = `EU ${sz} (${q} in stock)`; saleSizeInput.appendChild(opt);
     });
-    if (!saleSizeInput.options.length) { showToast('All sizes are out of stock.'); return; }
+    else { const opt = document.createElement('option'); opt.value = 'One size'; opt.textContent = 'One size'; saleSizeInput.appendChild(opt); }
+  };
+  if (cols.length) {
+    // Any colour item shows the colour picker. Per-colour stock filters sizes +
+    // deducts that colour; colour-LABEL-only items just record which colour sold.
+    const colOptions = stocked ? colorsWithStock(item) : cols;
+    if (stocked && !colOptions.length) { showToast('All colours are out of stock.'); return; }
+    colorSel.innerHTML = colOptions.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+    if (colorField) colorField.style.display = '';
+    if (stocked) fillSaleSizesForColor(item, colOptions[0]); else fillFlat();
   } else {
-    const opt = document.createElement('option'); opt.value = 'One size'; opt.textContent = 'One size'; saleSizeInput.appendChild(opt);
+    if (colorField) colorField.style.display = 'none';
+    fillFlat();
   }
 
   document.getElementById('saleQtyInput').value = 1;
@@ -794,6 +983,7 @@ document.getElementById('saleSaveBtn').addEventListener('click', () => {
   const item = items.find(i => i.id === pendingSaleId);
   if (!item) return;
   const size = document.getElementById('saleSizeInput').value;
+  const color = itemColors(item).length ? (document.getElementById('saleColorInput').value || '') : '';
   const qty = parseInt(document.getElementById('saleQtyInput').value, 10) || 1;
   const salePrice = parseInt(document.getElementById('salePriceInput').value, 10) || item.price; // already discounted (net)
   const discount = Math.max(0, parseInt(document.getElementById('saleDiscountInput').value, 10) || 0);
@@ -803,14 +993,18 @@ document.getElementById('saleSaveBtn').addEventListener('click', () => {
   const bPhone = document.getElementById('buyerPhone').value.trim();
   const soldAt = new Date().toISOString();
 
-  if (item.stock && item.stock[size] !== undefined) {
+  // Reduce stock — colour items deduct the exact colour+size, then re-sum the aggregate.
+  if (color && itemHasColorStock(item) && item.stockByColor[color] && item.stockByColor[color][size] !== undefined) {
+    item.stockByColor[color][size] = Math.max(0, item.stockByColor[color][size] - qty);
+    item.stock = aggregateStock(item.stockByColor);
+  } else if (item.stock && item.stock[size] !== undefined) {
     item.stock[size] = Math.max(0, item.stock[size] - qty);
   }
   if (!item.sales) item.sales = [];
   // Owed feature: capture cash actually taken at the moment of sale.
   // Blank = paid in full (don't write amountPaid → historical sales stay paid).
   const _saleRec = {
-    size, qty, salePrice, ...(discount > 0 ? { discount, listPrice } : {}), paymentMethod: payMethod, channel: 'shop',
+    size, ...(color ? { color } : {}), qty, salePrice, ...(discount > 0 ? { discount, listPrice } : {}), paymentMethod: payMethod, channel: 'shop',
     buyerName: bName,
     buyerPhone: bPhone,
     notes: document.getElementById('buyerNotes').value.trim(),
@@ -926,6 +1120,13 @@ function bsInStockSizes(b) {
   return keys.filter(k => Number(stock[k]) > 0);
 }
 function bulkSellableSelected() { return items.filter(b => bulkSelected.has(b.id) && bsInStockSizes(b).length > 0); }
+// Size control for a bulk-sell row. Colour-stock items show sizes for the chosen colour.
+function bsSizeControl(b, color) {
+  const sizes = (color && itemHasColorStock(b)) ? colorAvailSizes(b, color) : bsInStockSizes(b);
+  return sizes.length > 1
+    ? `<select class="bsr-size" data-id="${b.id}">${sizes.map(s => `<option value="${escapeHtml(s)}">EU ${escapeHtml(s)}</option>`).join('')}</select>`
+    : `<span class="bsr-onesize" data-id="${b.id}" data-size="${escapeHtml(sizes[0] || 'One size')}">${sizes[0] === 'One size' ? 'One size' : 'EU ' + escapeHtml(sizes[0] || 'One size')}</span>`;
+}
 let bulkSellTotalAmt = 0;
 window.bulkSell = () => {
   const list = bulkSellableSelected();
@@ -933,11 +1134,14 @@ window.bulkSell = () => {
   bulkSellTotalAmt = list.reduce((s, b) => s + bsEffPrice(b), 0);
   document.getElementById('bulkSellTitle').textContent = `Sell ${list.length} item${list.length === 1 ? '' : 's'} to one customer`;
   document.getElementById('bulkSellRows').innerHTML = list.map(b => {
-    const sizes = bsInStockSizes(b);
-    const ctl = sizes.length > 1
-      ? `<select class="bsr-size" data-id="${b.id}">${sizes.map(s => `<option value="${escapeHtml(s)}">EU ${escapeHtml(s)}</option>`).join('')}</select>`
-      : `<span class="bsr-onesize" data-id="${b.id}" data-size="${escapeHtml(sizes[0])}">${sizes[0] === 'One size' ? 'One size' : 'EU ' + escapeHtml(sizes[0])}</span>`;
-    return `<div class="bulksell-row"><span class="bulksell-row-name">${escapeHtml(b.name)} · ${fmtKsh(bsEffPrice(b))}</span>${ctl}</div>`;
+    const cols = itemColors(b);
+    let colorCtl = '', firstColor = '';
+    if (cols.length) {
+      const colOptions = itemHasColorStock(b) ? colorsWithStock(b) : cols;
+      firstColor = colOptions[0] || '';
+      colorCtl = `<select class="bsr-color" data-id="${b.id}">${colOptions.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}</select>`;
+    }
+    return `<div class="bulksell-row"><span class="bulksell-row-name">${escapeHtml(b.name)} · ${fmtKsh(bsEffPrice(b))}</span>${colorCtl}${bsSizeControl(b, firstColor)}</div>`;
   }).join('');
   document.getElementById('bulkSellTotal').textContent = `Total: ${fmtKsh(bulkSellTotalAmt)} · ${list.length} item${list.length === 1 ? '' : 's'}`;
   ['bulkSellName', 'bulkSellPhone', 'bulkSellNotes', 'bulkSellPaid', 'bulkSellCustSearch'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
@@ -949,6 +1153,16 @@ window.bulkSell = () => {
   document.getElementById('bulkSellModal').style.display = 'flex';
 };
 function closeBulkSell() { document.getElementById('bulkSellModal').style.display = 'none'; }
+// Bulk-sell row colour change → rebuild that row's size control for the chosen colour.
+document.getElementById('bulkSellRows')?.addEventListener('change', e => {
+  const cs = e.target.closest('.bsr-color');
+  if (!cs) return;
+  const b = items.find(x => x.id === cs.dataset.id);
+  const row = cs.closest('.bulksell-row');
+  if (!b || !row) return;
+  row.querySelector('.bsr-size, .bsr-onesize')?.remove();
+  row.insertAdjacentHTML('beforeend', bsSizeControl(b, cs.value));
+});
 function updateBulkSellHint() {
   const raw = (document.getElementById('bulkSellPaid').value || '').trim();
   document.getElementById('bulkSellPaidNone').classList.toggle('active', raw === '0');
@@ -965,7 +1179,8 @@ function commitBulkSold(withBuyer) {
   const chosen = initial.map(b => {
     const sel = document.querySelector(`.bsr-size[data-id="${b.id}"]`);
     const one = document.querySelector(`.bsr-onesize[data-id="${b.id}"]`);
-    return { id: b.id, size: sel ? sel.value : (one ? one.dataset.size : 'One size'), price: bsEffPrice(b) };
+    const colorSel = document.querySelector(`.bsr-color[data-id="${b.id}"]`);
+    return { id: b.id, size: sel ? sel.value : (one ? one.dataset.size : 'One size'), color: colorSel ? colorSel.value : '', price: bsEffPrice(b) };
   });
   const payMethod = document.querySelector('#bulkSellPay .pos-pay-btn.active')?.dataset.pay || 'mpesa';
   const buyer = { name: '', phone: '', notes: '' };
@@ -984,20 +1199,27 @@ function commitBulkSold(withBuyer) {
   for (const ch of chosen) {
     const item = items.find(b => b.id === ch.id);
     if (!item) continue;
+    const perColour = ch.color && itemHasColorStock(item);
     const stock = item.stock || {};
     const hasStockObj = Object.keys(stock).length > 0;
-    if (hasStockObj && !(Number(stock[ch.size]) > 0)) continue; // size sold out since the modal opened
+    // Skip if the chosen colour+size (or size) sold out since the modal opened.
+    if (perColour) {
+      if (!(Number(item.stockByColor[ch.color]?.[ch.size]) > 0)) continue;
+    } else if (hasStockObj && !(Number(stock[ch.size]) > 0)) continue;
     const total = ch.price; // qty 1
     const amountPaid = hasPartial ? Math.min(remaining, total) : total;
     if (hasPartial) remaining = Math.max(0, remaining - amountPaid);
     const sale = {
-      size: ch.size, qty: 1, salePrice: ch.price,
+      size: ch.size, ...(ch.color ? { color: ch.color } : {}), qty: 1, salePrice: ch.price,
       paymentMethod: payMethod, channel: 'shop',
       buyerName: withBuyer ? buyer.name : '', buyerPhone: withBuyer ? buyer.phone : '',
       notes: withBuyer ? buyer.notes : '', soldAt,
     };
     if (hasPartial) sale.amountPaid = amountPaid;
-    if (hasStockObj && stock[ch.size] !== undefined) stock[ch.size] = Math.max(0, Number(stock[ch.size]) - 1);
+    if (perColour) {
+      item.stockByColor[ch.color][ch.size] = Math.max(0, Number(item.stockByColor[ch.color][ch.size]) - 1);
+      item.stock = aggregateStock(item.stockByColor);
+    } else if (hasStockObj && stock[ch.size] !== undefined) stock[ch.size] = Math.max(0, Number(stock[ch.size]) - 1);
     if (!item.sales) item.sales = [];
     item.sales.push(sale);
     soldList.push({ item, sale });
@@ -1064,17 +1286,25 @@ function openRestockModal(id) {
   if (!item) return;
   pendingRestockId = id;
   document.getElementById('restockModalTitle').textContent = `Restock: ${item.name}`;
-  const restockSizeInput = document.getElementById('restockSizeInput');
-  restockSizeInput.innerHTML = '';
-  ALL_EU_SIZES.forEach(sz => {
-    const opt = document.createElement('option'); opt.value = sz;
-    const cur = item.stock?.[sz] || 0;
-    opt.textContent = `EU ${sz} (currently ${cur})`;
-    restockSizeInput.appendChild(opt);
-  });
+  const colorField = document.getElementById('restockColorField');
+  const colorSel = document.getElementById('restockColorInput');
+  const cols = itemColors(item);
+  if (cols.length) {
+    // Colour item — restock into a specific colour (all colours, incl. sold-out, are restockable).
+    colorSel.innerHTML = cols.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+    if (colorField) colorField.style.display = '';
+    fillRestockSizes(item, cols[0]);
+  } else {
+    if (colorField) colorField.style.display = 'none';
+    fillRestockSizes(item, '');
+  }
   document.getElementById('restockQtyInput').value = 3;
   restockModal.style.display = 'flex';
 }
+document.getElementById('restockColorInput')?.addEventListener('change', () => {
+  const item = items.find(i => i.id === pendingRestockId);
+  if (item) fillRestockSizes(item, document.getElementById('restockColorInput').value);
+});
 
 function closeRestockModal() { restockModal.style.display = 'none'; pendingRestockId = null; }
 
@@ -1082,15 +1312,24 @@ document.getElementById('restockSaveBtn').addEventListener('click', () => {
   const item = items.find(i => i.id === pendingRestockId);
   if (!item) return;
   const size = document.getElementById('restockSizeInput').value;
+  const color = itemColors(item).length ? (document.getElementById('restockColorInput').value || '') : '';
   const qty = parseInt(document.getElementById('restockQtyInput').value, 10) || 0;
   if (qty <= 0) { showToast('Enter a quantity to add.'); return; }
-  if (!item.stock) item.stock = {};
-  item.stock[size] = (item.stock[size] || 0) + qty;
+  if (color && itemColors(item).length) {
+    // Colour item: add to that colour's size, seeding stockByColor if needed, then re-sum.
+    ensureStockByColor(item);
+    item.stockByColor[color] = item.stockByColor[color] || {};
+    item.stockByColor[color][size] = (item.stockByColor[color][size] || 0) + qty;
+    item.stock = aggregateStock(item.stockByColor);
+  } else {
+    if (!item.stock) item.stock = {};
+    item.stock[size] = (item.stock[size] || 0) + qty;
+  }
   closeRestockModal();
   saveData();
   renderList();
   renderInventory();
-  showToast(`+${qty} × EU ${size} added to stock.`);
+  showToast(`+${qty} × EU ${size}${color ? ' ' + color : ''} added to stock.`);
 });
 
 document.getElementById('restockCancelBtn').addEventListener('click', closeRestockModal);
@@ -2460,9 +2699,25 @@ function posSelectItem(id) {
   document.getElementById('posItemSearch').value = it.name;
   document.getElementById('posItemResults').style.display = 'none';
   const sizeSel = document.getElementById('posSize'); sizeSel.innerHTML = '';
-  const inStock = Object.entries(it.stock || {}).filter(([, q]) => q > 0);
-  if (inStock.length) inStock.forEach(([sz, q]) => { const o = document.createElement('option'); o.value = sz; o.textContent = `EU ${sz} (${q} in stock)`; sizeSel.appendChild(o); });
-  else { const o = document.createElement('option'); o.value = 'One size'; o.textContent = 'One size'; sizeSel.appendChild(o); }
+  const posColorField = document.getElementById('posColorField');
+  const posColorSel = document.getElementById('posColor');
+  const posCols = itemColors(it);
+  const posStocked = itemHasColorStock(it);
+  const fillPosFlat = () => {
+    sizeSel.innerHTML = '';
+    const inStock = Object.entries(it.stock || {}).filter(([, q]) => q > 0);
+    if (inStock.length) inStock.forEach(([sz, q]) => { const o = document.createElement('option'); o.value = sz; o.textContent = `EU ${sz} (${q} in stock)`; sizeSel.appendChild(o); });
+    else { const o = document.createElement('option'); o.value = 'One size'; o.textContent = 'One size'; sizeSel.appendChild(o); }
+  };
+  if (posCols.length) {
+    const colOptions = posStocked ? colorsWithStock(it) : posCols;
+    posColorSel.innerHTML = colOptions.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+    if (posColorField) posColorField.style.display = '';
+    if (posStocked && colOptions.length) fillPosSizesForColor(it, colOptions[0]); else fillPosFlat();
+  } else {
+    if (posColorField) posColorField.style.display = 'none';
+    fillPosFlat();
+  }
   document.getElementById('posQty').value = 1;
   const posPriceEl = document.getElementById('posPrice');
   posPriceEl.value = (it.salePrice > 0 && it.salePrice < it.price) ? it.salePrice : (it.price || '');
@@ -2481,6 +2736,7 @@ function posReset() {
   document.getElementById('posSaleFields').style.display = 'none';
   document.getElementById('posReceiptPanel').style.display = 'none';
   document.getElementById('posCustomerFields').style.display = '';
+  { const pcf = document.getElementById('posColorField'); if (pcf) pcf.style.display = 'none'; }
   document.querySelectorAll('#posPay .pos-pay-btn').forEach(b => b.classList.toggle('active', b.dataset.pay === 'mpesa'));
 }
 function posReceiptText(s) {
@@ -2624,6 +2880,7 @@ function recordPosSale() {
   const it = items.find(x => x.id === targetId);
   if (!it) { showToast('Item not found — refresh.'); return; }
   const size = document.getElementById('posSize').value;
+  const color = itemColors(it).length ? (document.getElementById('posColor').value || '') : '';
   const qty = parseInt(document.getElementById('posQty').value, 10) || 1;
   const priceRaw = parseInt(document.getElementById('posPrice').value, 10);
   const amount = isNaN(priceRaw) ? (Number(it.price) || 0) : priceRaw; // already discounted (net)
@@ -2632,10 +2889,15 @@ function recordPosSale() {
   const name = document.getElementById('posBuyerName').value.trim();
   const phone = document.getElementById('posBuyerPhone').value.trim().replace(/[^0-9+]/g, '');
   const soldAt = new Date().toISOString();
-  if (it.stock && it.stock[size] !== undefined) it.stock[size] = Math.max(0, it.stock[size] - qty);
+  if (color && itemHasColorStock(it) && it.stockByColor[color] && it.stockByColor[color][size] !== undefined) {
+    it.stockByColor[color][size] = Math.max(0, it.stockByColor[color][size] - qty);
+    it.stock = aggregateStock(it.stockByColor);
+  } else if (it.stock && it.stock[size] !== undefined) {
+    it.stock[size] = Math.max(0, it.stock[size] - qty);
+  }
   if (!it.sales) it.sales = [];
   // Owed feature: capture cash now (blank = paid in full)
-  const _posSaleRec = { size, qty, salePrice: amount, ...(discount > 0 ? { discount, listPrice } : {}), paymentMethod: posPayMethod, channel: 'shop', buyerName: name, buyerPhone: phone, notes: '', soldAt };
+  const _posSaleRec = { size, ...(color ? { color } : {}), qty, salePrice: amount, ...(discount > 0 ? { discount, listPrice } : {}), paymentMethod: posPayMethod, channel: 'shop', buyerName: name, buyerPhone: phone, notes: '', soldAt };
   const _posPaidRaw = (document.getElementById('posPaid')?.value || '').trim();
   if (_posPaidRaw !== '') {
     const _posTotalNow = (Number(amount) || 0) * (Number(qty) || 1);

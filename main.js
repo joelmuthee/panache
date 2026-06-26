@@ -15,6 +15,7 @@ const PAGE_SIZE = 15;
   let currentSort = 'default';
   let currentPage = 1;
   const selectedSizes = new Map(); // itemId → selected EU size string
+  const selectedColors = new Map(); // itemId → selected colour (colour items only)
 
   // ── DATA ──
   async function loadData() {
@@ -65,11 +66,12 @@ const PAGE_SIZE = 15;
   }
 
   // Message body WITHOUT the trailing "\n\n📸 postUrl" tail.
-  function enquireBody(item, chosenSize) {
+  function enquireBody(item, chosenSize, chosenColor) {
     const sizeHint = chosenSize ? ` (EU ${chosenSize})` : (item.sizes ? ` (sizes: ${item.sizes})` : '');
+    const colorHint = chosenColor ? ` in ${chosenColor}` : '';
     return item.sold
-      ? `Hi! I'm interested in the *${item.name}*${sizeHint} from The Panache Store. Is it coming back in stock? 🙏`
-      : `Hi! I'd like to check availability of the *${item.name}* (${fmtPrice(item.price)})${sizeHint} from The Panache Store.`;
+      ? `Hi! I'm interested in the *${item.name}*${colorHint}${sizeHint} from The Panache Store. Is it coming back in stock? 🙏`
+      : `Hi! I'd like to check availability of the *${item.name}* (${fmtPrice(item.price)})${colorHint}${sizeHint} from The Panache Store.`;
   }
 
   // Worker share page — when this URL is shared into WhatsApp, the crawler
@@ -78,14 +80,14 @@ const PAGE_SIZE = 15;
   // FB/WA crawler isn't blocked by bot protection. Item-aware: /share/<id>.
   const SHARE_BASE = 'https://panachekenya.stawisystems.workers.dev/share/';
 
-  function whatsappLink(item, chosenSize) {
+  function whatsappLink(item, chosenSize, chosenColor) {
     const phone = settings.whatsappNumber || '2540734737373';
     // Append the share-page URL so WhatsApp renders a preview card with the
     // shoe image — replaces the old `📸 instagram.com/p/...` tail which only
     // gave a generic IG preview (and sometimes none at all if IG rate-limits).
     const msg = item.sold
-      ? enquireBody(item, chosenSize)
-      : `${enquireBody(item, chosenSize)}\n\n${SHARE_BASE}${encodeURIComponent(item.id)}`;
+      ? enquireBody(item, chosenSize, chosenColor)
+      : `${enquireBody(item, chosenSize, chosenColor)}\n\n${SHARE_BASE}${encodeURIComponent(item.id)}`;
     return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
   }
 
@@ -103,7 +105,53 @@ const PAGE_SIZE = 15;
     return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
+  // Optional colour variants. Must be defined in BOTH main.js and admin.js.
+  function itemColors(item) {
+    return Array.isArray(item.colors) ? item.colors.map(c => String(c).trim()).filter(Boolean) : [];
+  }
+  // Per-colour × size stock (the accurate inventory model). When present, the
+  // size chips follow the chosen colour and sold-out colours are disabled.
+  function itemHasColorStock(item) {
+    return Array.isArray(item.colors) && item.colors.length > 0 && item.stockByColor && typeof item.stockByColor === 'object';
+  }
+  function colorAvailSizes(item, color) {
+    return Object.entries((item.stockByColor || {})[color] || {})
+      .filter(([, q]) => (q || 0) > 0).map(([s]) => s).filter(s => s !== 'One size')
+      .sort((a, b) => { const na = parseFloat(a), nb = parseFloat(b); return (!isNaN(na) && !isNaN(nb)) ? na - nb : String(a).localeCompare(String(b)); });
+  }
+  function colorInStock(item, color) {
+    return Object.values((item.stockByColor || {})[color] || {}).some(q => (q || 0) > 0);
+  }
+  // Build the inner size-chip buttons for a list of sizes (used by colour items).
+  function sizeChipButtons(item, sizes) {
+    const sel = selectedSizes.get(item.id);
+    return sizes.map(s =>
+      `<button class="size-chip${s === sel ? ' active' : ''}" data-action="select-size" data-id="${item.id}" data-size="${s}" type="button">${s}</button>`
+    ).join('') + `<span class="size-hint" id="size-hint-${item.id}"></span>`;
+  }
+  // Colour chips row — shown whenever an item has colours. Per-colour-stock items
+  // grey out sold-out colours and gate the size chips behind a colour choice.
+  function colorChips(item) {
+    const cols = itemColors(item);
+    if (item.sold || !cols.length) return '';
+    const colorStock = itemHasColorStock(item);
+    const sel = selectedColors.get(item.id);
+    const chips = cols.map(c => {
+      const out = colorStock && !colorInStock(item, c);
+      const isSel = c === sel;
+      return `<button type="button" class="color-chip${isSel ? ' selected' : ''}${out ? ' soldout' : ''}" data-action="select-color" data-id="${item.id}" data-color="${escapeHtml(c)}"${out ? ' disabled' : ''}>${escapeHtml(c)}${out ? ' · sold out' : ''}</button>`;
+    }).join('');
+    return `<div class="color-chips" id="colors-${item.id}"><span class="color-label">Colour:</span>${chips}</div>${colorStock ? `<p class="color-pick-hint" id="color-hint-${item.id}">Pick a colour to see sizes</p>` : ''}`;
+  }
+
   function sizeChips(item) {
+    // Colour-stock items: sizes appear AFTER a colour is picked (driven by the
+    // colour handler). Start with whatever the currently-selected colour offers.
+    if (itemHasColorStock(item)) {
+      const sel = selectedColors.get(item.id);
+      const sizes = sel ? colorAvailSizes(item, sel) : [];
+      return `<div class="card-sizes" id="sizes-${item.id}" data-color-driven="1">${sizes.length ? sizeChipButtons(item, sizes) : ''}</div>`;
+    }
     const sizes = item.sizes || '';
     const list = sizes.split(',').map(s => s.trim()).filter(Boolean);
     if (!list.length) return '';
@@ -192,6 +240,7 @@ const PAGE_SIZE = 15;
         </div>
         <div class="card-body">
           <h3 class="card-title">${escapeHtml(item.name)}</h3>
+          ${colorChips(item)}
           ${sizeChips(item)}
           <div class="card-price-row">
             <span class="card-price">${fmtPrice(item.price)}</span>
@@ -388,6 +437,35 @@ const PAGE_SIZE = 15;
       return;
     }
 
+    // Colour chip selection — single per card. For colour-stock items, picking a
+    // colour rebuilds the size chips for that colour; re-picking clears them.
+    const colorChip = e.target.closest('[data-action="select-color"]');
+    if (colorChip) {
+      if (colorChip.disabled) return;
+      const id = colorChip.dataset.id;
+      const item = items.find(i => i.id === id);
+      if (!item) return;
+      const wasSel = selectedColors.get(id) === colorChip.dataset.color;
+      if (wasSel) { selectedColors.delete(id); selectedSizes.delete(id); }
+      else { selectedColors.set(id, colorChip.dataset.color); selectedSizes.delete(id); }
+      const colorsRow = document.getElementById(`colors-${id}`);
+      if (colorsRow) {
+        const sel = selectedColors.get(id);
+        colorsRow.querySelectorAll('.color-chip').forEach(c => c.classList.toggle('selected', c.dataset.color === sel));
+        colorsRow.classList.remove('shake');
+      }
+      // Colour-stock items: refill the size chips for the chosen colour.
+      const sizeWrap = document.getElementById(`sizes-${id}`);
+      if (sizeWrap && sizeWrap.dataset.colorDriven && itemHasColorStock(item)) {
+        const sel = selectedColors.get(id);
+        sizeWrap.classList.remove('shake');
+        sizeWrap.innerHTML = sel ? sizeChipButtons(item, colorAvailSizes(item, sel)) : '';
+        const hint = document.getElementById(`color-hint-${id}`);
+        if (hint) hint.style.display = sel ? 'none' : '';
+      }
+      return;
+    }
+
     // Size chip selection
     const chip = e.target.closest('[data-action="select-size"]');
     if (chip) {
@@ -415,9 +493,21 @@ const PAGE_SIZE = 15;
       const id = enquireBtn.dataset.id;
       const item = items.find(i => i.id === id);
       if (!item) return;
-      const hasSizes = item.sizes && item.sizes.trim().length > 0;
+      const cols = itemColors(item);
+      const chosenColor = selectedColors.get(id);
+      // Colour items: require a colour first (whenever the item has colours).
+      if (!item.sold && cols.length && !chosenColor) {
+        const colorsRow = document.getElementById(`colors-${id}`);
+        if (colorsRow) { colorsRow.classList.remove('shake'); void colorsRow.offsetWidth; colorsRow.classList.add('shake'); }
+        const hint = document.getElementById(`color-hint-${id}`);
+        if (hint) { hint.style.display = ''; hint.textContent = 'Pick a colour first'; }
+        return;
+      }
+      // Size requirement: colour-stock items use the chosen colour's sizes; others use item.sizes.
+      const hasSizes = itemHasColorStock(item)
+        ? (chosenColor && colorAvailSizes(item, chosenColor).length > 0)
+        : (item.sizes && item.sizes.trim().length > 0);
       const chosen = selectedSizes.get(id);
-      // Require size selection only for available items that have sizes
       if (!item.sold && hasSizes && !chosen) {
         const sizesRow = document.getElementById(`sizes-${id}`);
         const hint = document.getElementById(`size-hint-${id}`);
@@ -432,7 +522,7 @@ const PAGE_SIZE = 15;
       // Open WhatsApp directly. whatsappLink appends the Instagram post URL so
       // WhatsApp still renders a preview card — no OS app-picker.
       track('itemEnquiries', id);
-      window.open(whatsappLink(item, chosen || null), '_blank', 'noopener');
+      window.open(whatsappLink(item, chosen || null, chosenColor || null), '_blank', 'noopener');
       return;
     }
 

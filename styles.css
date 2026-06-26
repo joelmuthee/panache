@@ -547,7 +547,7 @@ img { max-width: 100%; display: block; }
 .recent-list::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 4px; }
 .recent-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
 .recent-main { display: flex; gap: 10px; align-items: center; min-width: 0; }
-.recent-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.recent-actions { display: grid; grid-template-columns: auto auto; gap: 6px; flex-shrink: 0; align-content: center; }
 .recent-actions button { padding: 5px 10px; font-size: 12px; border-radius: 6px; border: 1px solid var(--line); background: #fff; cursor: pointer; font-family: inherit; }
 .recent-actions button:hover { background: var(--ink); color: var(--gold-light); border-color: var(--ink); }
 .recent-actions button.danger { color: #b00020; border-color: #f3c5cc; }
@@ -1203,3 +1203,30 @@ summary.dash-summary .dash-title { margin-bottom: 0; padding-right: 28px; }
 .dash-collapse[open] summary.dash-summary .dash-title { margin-bottom: 18px; }
 summary.dash-summary::after { content: "\203A"; position: absolute; right: 2px; top: 6px; font-size: 24px; line-height: 1; color: var(--gold-deep, var(--gold)); transform: rotate(90deg); transition: transform 0.18s ease; }
 .dash-collapse[open] summary.dash-summary::after { transform: rotate(-90deg); }
+
+/* ===== Colour variants (public cards) ===== */
+.color-chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-top: 2px; }
+.color-label { font-size: 11px; color: var(--ink-faint); font-weight: 600; margin-right: 2px; }
+.color-chip {
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  border-radius: 999px; padding: 4px 11px; font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease; font-family: inherit;
+}
+.color-chip:hover { border-color: var(--gold); background: var(--gold-light); color: var(--ink); }
+.color-chip.selected { background: var(--purple); color: #fff; border-color: var(--purple); }
+.color-chip.soldout { opacity: 0.45; text-decoration: line-through; cursor: not-allowed; }
+.color-chip.soldout:hover { border-color: var(--line); background: var(--surface); color: var(--ink); }
+.color-pick-hint { font-size: 11px; color: var(--ink-faint); font-style: italic; margin: 4px 0 0; }
+.color-chips.shake { animation: shake 0.35s ease; }
+
+/* ===== Stock-per-colour grid (admin) ===== */
+.cstk-sizes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.cstk-sizes-lbl { font-size: 12px; font-weight: 600; color: var(--ink-soft); }
+.cstk-sizes input { flex: 1 1 160px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font-family: inherit; }
+.cstk-grid-wrap { overflow-x: auto; margin-top: 8px; }
+.cstk-table { border-collapse: collapse; font-size: 13px; }
+.cstk-table th, .cstk-table td { border: 1px solid var(--line); padding: 4px; text-align: center; }
+.cstk-table thead th { background: var(--surface); font-weight: 700; color: var(--ink-soft); position: sticky; top: 0; }
+.cstk-table .cstk-color { font-weight: 700; text-align: left; padding: 4px 10px; background: var(--surface); white-space: nowrap; }
+.cstk-table .cstk-qty { width: 52px; padding: 6px 4px; border: 1px solid var(--line); border-radius: 6px; text-align: center; font-size: 13px; font-family: inherit; }
+.cstk-table .cstk-qty:focus { outline: none; border-color: var(--gold); }

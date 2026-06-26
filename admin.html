@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#52147a">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20260620recentactions">
+<link rel="stylesheet" href="styles.css?v=20260626cstock">
 </head>
 <body style="background:#faf7ff;">
 
@@ -91,6 +91,7 @@
       </div>
       <div id="posChosen" class="pos-chosen" style="display:none;"></div>
       <div id="posSaleFields" style="display:none;">
+        <div class="field" id="posColorField" style="display:none;"><label>Colour</label><select id="posColor"></select></div>
         <div class="pos-row">
           <div class="field"><label>Size (EU)</label><select id="posSize"></select></div>
           <div class="field pos-qty"><label>Qty</label><input id="posQty" type="number" min="1" value="1"></div>
@@ -378,6 +379,11 @@
     </div>
 
     <div class="field">
+      <label>Colours <small style="font-weight:400;color:#999;">— optional. Separate with commas, e.g. Black, Nude, Pink. Shoppers pick one when they enquire.</small></label>
+      <input id="colorsInput" type="text" placeholder="e.g. Black, Nude, Pink" autocomplete="off">
+    </div>
+
+    <div class="field">
       <label>Description</label>
       <textarea id="descInput" placeholder="Tap 'Suggest' or write your own..."></textarea>
       <button class="btn-admin" id="aiBtn" type="button" style="margin-top:8px;">✨ Suggest description</button>
@@ -399,8 +405,8 @@
       <input id="costInput" type="number" min="0" step="50" placeholder="e.g. 2000">
     </div>
 
-    <!-- STOCK ENTRY — EU shoe sizes -->
-    <div class="field">
+    <!-- STOCK ENTRY — EU shoe sizes (flat; hidden when the item has colours) -->
+    <div class="field" id="flatStockSection">
       <label>Stock by EU size <small style="font-weight:400;color:#999;">— enter quantity per size. Leave blank if not stocked in that size.</small></label>
       <div class="stock-entry-group">
         <label class="group-label">EU 35–42</label>
@@ -429,6 +435,18 @@
         <div class="stock-entry-row" id="customSizeRows"></div>
       </div>
       <button class="btn-admin" id="addCustomSizeBtn" type="button" style="margin-top:6px;font-size:12px;">+ Add custom size</button>
+    </div>
+
+    <!-- STOCK PER COLOUR & SIZE — shown only when the item has colours. -->
+    <div class="field" id="colorStockPanel" style="display:none;">
+      <label>Stock per colour &amp; size <small style="font-weight:400;color:#999;">— this item has colours, so set how many of each size you have in each colour. Selling deducts the exact colour and size.</small></label>
+      <div class="cstk-sizes">
+        <span class="cstk-sizes-lbl">Sizes it comes in:</span>
+        <input id="cstkSizesInput" type="text" placeholder="e.g. 37, 38, 39, 40" autocomplete="off">
+        <button class="btn-admin" id="cstkBuildBtn" type="button">Build grid</button>
+      </div>
+      <p class="stock-hint" style="font-size:12px;color:#999;margin:6px 0;">Type the sizes (comma-separated), tap <strong>Build grid</strong>, then fill the quantity for each colour and size. Leave blank or 0 for ones you don't have.</p>
+      <div id="cstkGrid" class="cstk-grid-wrap"></div>
     </div>
 
     <div class="admin-actions" style="margin-top:4px;">
@@ -494,6 +512,10 @@
   <div class="modal-card">
     <h3 id="saleModalTitle">Record a sale</h3>
     <p class="sub">Reduce stock and save buyer details for remarketing.</p>
+    <div class="field" id="saleColorField" style="display:none;">
+      <label>Colour</label>
+      <select id="saleColorInput"></select>
+    </div>
     <div class="field">
       <label>Size sold</label>
       <select id="saleSizeInput"></select>
@@ -630,6 +652,10 @@
   <div class="modal-card">
     <h3 id="restockModalTitle">Restock item</h3>
     <p class="sub">Add units to existing stock.</p>
+    <div class="field" id="restockColorField" style="display:none;">
+      <label>Colour</label>
+      <select id="restockColorInput"></select>
+    </div>
     <div class="field">
       <label>Size</label>
       <select id="restockSizeInput"></select>
@@ -714,6 +740,6 @@
   </div>
 </div>
 
-<script src="admin.js?v=20260624discount"></script>
+<script src="admin.js?v=20260626cstock"></script>
 </body>
 </html>
