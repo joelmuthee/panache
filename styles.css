@@ -1195,14 +1195,13 @@ summary.manual-entry-divider::marker { content: ""; }
 summary.manual-entry-divider:hover .me-pill { transform: translateY(-1px); box-shadow: 0 5px 16px rgba(0,0,0,0.22); filter: brightness(0.96); }
 summary.manual-entry-divider:active .me-pill { transform: translateY(0); }
 
-.dash-collapse { margin: 0; }
-summary.dash-summary { display: block; list-style: none; cursor: pointer; user-select: none; position: relative; }
-summary.dash-summary::-webkit-details-marker { display: none; }
-summary.dash-summary::marker { content: ""; }
-summary.dash-summary .dash-title { margin-bottom: 0; padding-right: 28px; }
-.dash-collapse[open] summary.dash-summary .dash-title { margin-bottom: 18px; }
-summary.dash-summary::after { content: "\203A"; position: absolute; right: 2px; top: 6px; font-size: 24px; line-height: 1; color: var(--gold-deep, var(--gold)); transform: rotate(90deg); transition: transform 0.18s ease; }
-.dash-collapse[open] summary.dash-summary::after { transform: rotate(-90deg); }
+/* collapsible dashboard sections: click the title to fold/unfold */
+.dash-title.dash-foldable { cursor: pointer; user-select: none; position: relative; padding-right: 30px; }
+.dash-title.dash-foldable::after { content: "\203A"; position: absolute; right: 2px; top: 50%; font-size: 22px; line-height: 1; color: var(--gold-deep, var(--gold)); transform: translateY(-50%) rotate(90deg); transition: transform 0.18s ease; }
+.dash.collapsed .dash-title.dash-foldable::after { transform: translateY(-50%) rotate(0deg); }
+.dash-title.dash-foldable:hover { color: var(--gold-deep, var(--gold)); }
+.dash.collapsed > :not(:first-child) { display: none !important; }
+.dash.collapsed > .dash-title { margin-bottom: 0; }
 
 /* ===== Colour variants (public cards) ===== */
 .color-chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-top: 2px; }

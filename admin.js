@@ -2967,19 +2967,38 @@ document.getElementById('posImgReceiptBtn')?.addEventListener('click', posShareR
   if (manualSummary) manualSummary.addEventListener('click', function (e) { e.preventDefault(); if (manualEntry) manualEntry.open = !manualEntry.open; });
   var addLink = document.querySelector('.admin-nav a[href="#addForm"]');
   if (addLink) addLink.addEventListener('click', function () { if (manualEntry) manualEntry.open = true; });
-
-  var broadcastCollapse = document.getElementById('broadcastCollapse');
-  var broadcastSummary = broadcastCollapse ? broadcastCollapse.querySelector('summary.dash-summary') : null;
-  if (broadcastSummary) broadcastSummary.addEventListener('click', function (e) { e.preventDefault(); broadcastCollapse.open = !broadcastCollapse.open; });
-  var bcLink = document.querySelector('.admin-nav a[href="#broadcastDash"]');
-  if (bcLink) bcLink.addEventListener('click', function () { if (broadcastCollapse) broadcastCollapse.open = true; });
-
-  var expensesCollapse = document.getElementById('expensesCollapse');
-  var expensesSummary = expensesCollapse ? expensesCollapse.querySelector('summary.dash-summary') : null;
-  if (expensesSummary) expensesSummary.addEventListener('click', function (e) { e.preventDefault(); expensesCollapse.open = !expensesCollapse.open; });
-  var exLink = document.querySelector('.admin-nav a[href="#expensesDash"]');
-  if (exLink) exLink.addEventListener('click', function () { if (expensesCollapse) expensesCollapse.open = true; });
 })();
+
+// Make EVERY dashboard section collapsible: click its title to fold/unfold,
+// state remembered per-section in localStorage (default expanded). Mobile-safe
+// (plain class toggle, no native <details>). Collapsing hides all of a section's
+// children except the first (its title/header row). A nav-link click expands its
+// target so you never scroll to a folded section.
+function initCollapsibleDashes() {
+  var KEY = 'panacheDashFold';
+  var state = {};
+  try { state = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) {}
+  var save = function () { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
+  document.querySelectorAll('section.dash').forEach(function (sec) {
+    if (!sec.id) return;
+    var title = sec.querySelector('.dash-title');
+    if (!title) return;
+    title.classList.add('dash-foldable');
+    if (state[sec.id]) sec.classList.add('collapsed');
+    title.addEventListener('click', function () {
+      sec.classList.toggle('collapsed');
+      state[sec.id] = sec.classList.contains('collapsed');
+      save();
+    });
+  });
+  document.querySelectorAll('.admin-nav a[href^="#"]').forEach(function (a) {
+    a.addEventListener('click', function () {
+      var sec = document.getElementById(a.getAttribute('href').slice(1));
+      if (sec && sec.classList.contains('collapsed')) { sec.classList.remove('collapsed'); state[sec.id] = false; save(); }
+    });
+  });
+}
+initCollapsibleDashes();
 
 checkAuth();
 
