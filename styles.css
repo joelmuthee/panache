@@ -1222,10 +1222,11 @@ summary.manual-entry-divider:active .me-pill { transform: translateY(0); }
 .cstk-sizes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .cstk-sizes-lbl { font-size: 12px; font-weight: 600; color: var(--ink-soft); }
 .cstk-sizes input { flex: 1 1 160px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font-family: inherit; }
-.cstk-grid-wrap { overflow-x: auto; margin-top: 8px; }
+.cstk-grid-wrap { overflow-x: auto; margin-top: 8px; -webkit-overflow-scrolling: touch; }
 .cstk-table { border-collapse: collapse; font-size: 13px; }
 .cstk-table th, .cstk-table td { border: 1px solid var(--line); padding: 4px; text-align: center; }
-.cstk-table thead th { background: var(--surface); font-weight: 700; color: var(--ink-soft); position: sticky; top: 0; }
-.cstk-table .cstk-color { font-weight: 700; text-align: left; padding: 4px 10px; background: var(--surface); white-space: nowrap; }
+.cstk-table thead th { background: var(--surface); font-weight: 700; color: var(--ink-soft); position: sticky; top: 0; z-index: 1; }
+/* Freeze the colour column so the row label stays put while scrolling sizes sideways. */
+.cstk-table .cstk-color { font-weight: 700; text-align: left; padding: 4px 10px; background: var(--surface); white-space: nowrap; position: sticky; left: 0; z-index: 2; }
 .cstk-table .cstk-qty { width: 52px; padding: 6px 4px; border: 1px solid var(--line); border-radius: 6px; text-align: center; font-size: 13px; font-family: inherit; }
 .cstk-table .cstk-qty:focus { outline: none; border-color: var(--gold); }

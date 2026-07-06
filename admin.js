@@ -604,7 +604,8 @@ function buildColorStockGrid(existing) {
   const colors = cstkColors(), sizes = cstkSizeList();
   if (!colors.length) { grid.innerHTML = '<p style="font-size:12px;color:#999;">Add colours in the field above first.</p>'; return; }
   if (!sizes.length) { grid.innerHTML = '<p style="font-size:12px;color:#999;">Type the sizes above (e.g. 37, 38, 39), then tap <strong>Build grid</strong>.</p>'; return; }
-  let html = '<table class="cstk-table"><thead><tr><th>Colour</th>' + sizes.map(s => `<th>${escapeHtml(s)}</th>`).join('') + '</tr></thead><tbody>';
+  let html = (sizes.length > 6 ? '<p style="font-size:11px;color:#999;margin:0 0 4px;">Scroll sideways to see every size. The colour name stays put on the left.</p>' : '')
+    + '<table class="cstk-table"><thead><tr><th>Colour</th>' + sizes.map(s => `<th>${escapeHtml(s)}</th>`).join('') + '</tr></thead><tbody>';
   colors.forEach(col => {
     html += `<tr><td class="cstk-color">${escapeHtml(col)}</td>` + sizes.map(s => {
       const v = (existing && existing[col] && existing[col][s] > 0) ? existing[col][s] : '';
@@ -612,6 +613,13 @@ function buildColorStockGrid(existing) {
     }).join('') + '</tr>';
   });
   grid.innerHTML = html + '</tbody></table>';
+  // Force each quantity as a PROPERTY too — some mobile browsers don't paint a
+  // number input's value when it's only set via the value="" attribute in HTML,
+  // which made pre-filled stock look blank.
+  if (existing) grid.querySelectorAll('.cstk-qty').forEach(inp => {
+    const v = existing[inp.dataset.color] && existing[inp.dataset.color][inp.dataset.size];
+    if (v > 0) inp.value = v;
+  });
 }
 // Toggle flat grid vs colour matrix based on whether colours are set.
 function colorStockToggle() {
