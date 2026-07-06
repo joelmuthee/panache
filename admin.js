@@ -506,7 +506,9 @@ function cstkColors() {
   return (document.getElementById('colorsInput')?.value || '').split(',').map(c => c.trim()).filter(Boolean);
 }
 function cstkSizeList() {
-  const raw = (document.getElementById('cstkSizesInput')?.value || '').split(',').map(s => s.trim()).filter(Boolean);
+  // Split on commas, spaces or new lines — so a size list works even when the
+  // comma key is awkward on a phone keyboard (type "22 23 24" or "22,23,24").
+  const raw = (document.getElementById('cstkSizesInput')?.value || '').split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
   return [...new Set(raw)].sort((a, b) => {
     const na = parseFloat(a), nb = parseFloat(b);
     if (!isNaN(na) && !isNaN(nb)) return na - nb;
