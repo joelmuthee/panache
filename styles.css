@@ -1230,3 +1230,23 @@ summary.manual-entry-divider:active .me-pill { transform: translateY(0); }
 .cstk-table .cstk-color { font-weight: 700; text-align: left; padding: 4px 10px; background: var(--surface); white-space: nowrap; position: sticky; left: 0; z-index: 2; }
 .cstk-table .cstk-qty { width: 52px; padding: 6px 4px; border: 1px solid var(--line); border-radius: 6px; text-align: center; font-size: 13px; font-family: inherit; }
 .cstk-table .cstk-qty:focus { outline: none; border-color: var(--gold); }
+
+/* ===== Assistant (staff) role — limited view =====
+   Applied by admin.js adding `role-assistant` to <body> after a staff login.
+   Hides the reporting dashboards, their nav links, and the stray money figures
+   inside kept views (today's takings, inventory value, buying price, per-client money). */
+body.role-assistant #salesDash,
+body.role-assistant #broadcastDash,
+body.role-assistant #owedDash,
+body.role-assistant #expensesDash,
+body.role-assistant #insightsDash,
+body.role-assistant .admin-nav a[href="#salesDash"],
+body.role-assistant .admin-nav a[href="#broadcastDash"],
+body.role-assistant .admin-nav a[href="#owedDash"],
+body.role-assistant .admin-nav a[href="#expensesDash"],
+body.role-assistant .admin-nav a[href="#insightsDash"],
+body.role-assistant #posTodaySplit,
+body.role-assistant .inv-kpi-money,
+body.role-assistant .client-money,
+body.role-assistant .clients-list .owed-amount,
+body.role-assistant #costField { display: none !important; }

@@ -1,5 +1,6 @@
 // The Panache Store — Admin
 const ADMIN_PASSWORD = 'panache123';
+const STAFF_PASSWORD = 'panachestaff';
 const STORAGE_KEY = 'panache_data';
 const INSIGHTS_KEY = 'panache_insights';
 const ALL_EU_SIZES = ['35','36','37','38','39','40','41','42','43','44','45'];
@@ -25,6 +26,7 @@ const loginError = document.getElementById('loginError');
 
 function checkAuth() {
   if (sessionStorage.getItem('panache_auth') === '1') {
+    document.body.classList.toggle('role-assistant', (sessionStorage.getItem('panache_role') || 'owner') === 'assistant');
     loginScreen.style.display = 'none';
     dashboard.style.display = 'block';
     init();
@@ -36,6 +38,12 @@ loginPassword.addEventListener('keypress', e => { if (e.key === 'Enter') login()
 function login() {
   if (loginPassword.value === ADMIN_PASSWORD) {
     sessionStorage.setItem('panache_auth', '1');
+    sessionStorage.setItem('panache_role', 'owner');
+    loginError.style.display = 'none';
+    checkAuth();
+  } else if (loginPassword.value === STAFF_PASSWORD) {
+    sessionStorage.setItem('panache_auth', '1');
+    sessionStorage.setItem('panache_role', 'assistant');
     loginError.style.display = 'none';
     checkAuth();
   } else {
@@ -45,6 +53,7 @@ function login() {
 
 document.getElementById('logoutBtn').addEventListener('click', () => {
   sessionStorage.removeItem('panache_auth');
+  sessionStorage.removeItem('panache_role');
   location.reload();
 });
 
@@ -1690,7 +1699,7 @@ function renderInventory() {
   document.getElementById('invKpiGrid').innerHTML = [
     { label: 'Total items', val: totalItems, sub: 'SKUs listed', cls: '' },
     { label: 'Units in stock', val: totalUnits.toLocaleString(), sub: 'across all sizes', cls: 'success' },
-    { label: 'Inventory value', val: fmtKsh(totalValue), sub: 'at listed prices', cls: '' },
+    { label: 'Inventory value', val: fmtKsh(totalValue), sub: 'at listed prices', cls: 'inv-kpi-money' },
     { label: 'Low stock', val: lowStock, sub: '5 or fewer units', cls: lowStock > 0 ? 'warn' : '' },
     { label: 'Out of stock', val: outOfStock, sub: 'need restocking', cls: outOfStock > 0 ? 'danger' : '' },
   ].map(k => `
@@ -1742,10 +1751,10 @@ function renderInventory() {
     if (item.cost) {
       if (soldUnits > 0) {
         const profit = totalRevenue(item) - item.cost * soldUnits;
-        costLine = `<div style="font-size:11px;color:#2e7d32;">cost ${fmtKsh(item.cost)} · profit ${fmtKsh(profit)}</div>`;
+        costLine = `<div class="client-money" style="font-size:11px;color:#2e7d32;">cost ${fmtKsh(item.cost)} · profit ${fmtKsh(profit)}</div>`;
       } else {
         const margin = item.price - item.cost;
-        costLine = `<div style="font-size:11px;color:#2e7d32;">cost ${fmtKsh(item.cost)} · margin ${fmtKsh(margin)}</div>`;
+        costLine = `<div class="client-money" style="font-size:11px;color:#2e7d32;">cost ${fmtKsh(item.cost)} · margin ${fmtKsh(margin)}</div>`;
       }
     }
 
@@ -1754,7 +1763,7 @@ function renderInventory() {
       <td><img class="item-img" src="${item.image}" alt="${escapeHtml(item.name)}"></td>
       <td>
         <div style="font-weight:600;font-size:13px;">${escapeHtml(item.name)}</div>
-        <div style="font-size:11px;color:#999;margin-top:2px;">${soldUnits} sold · ${fmtKsh(totalRevenue(item))} revenue</div>
+        <div style="font-size:11px;color:#999;margin-top:2px;">${soldUnits} sold<span class="client-money"> · ${fmtKsh(totalRevenue(item))} revenue</span></div>
       </td>
       <td style="font-size:13px;">${escapeHtml(item.category || '—')}</td>
       <td style="font-size:13px;font-weight:600;">${fmtKsh(item.price)}${costLine}</td>
@@ -2482,8 +2491,8 @@ function renderClients() {
   const kpi = document.getElementById('clientsKpiGrid');
   if (kpi) kpi.innerHTML = `
     <div class="inv-kpi"><div class="inv-kpi-label">Clients</div><div class="inv-kpi-val">${ledger.length}</div><div class="inv-kpi-sub">${repeat} repeat buyer${repeat === 1 ? '' : 's'}</div></div>
-    <div class="inv-kpi success"><div class="inv-kpi-label">Total spent</div><div class="inv-kpi-val">${fmtKsh(totalSpend)}</div><div class="inv-kpi-sub">across all clients</div></div>
-    <div class="inv-kpi"><div class="inv-kpi-label">Avg per client</div><div class="inv-kpi-val">${fmtKsh(avg)}</div><div class="inv-kpi-sub">lifetime value</div></div>
+    <div class="inv-kpi success inv-kpi-money"><div class="inv-kpi-label">Total spent</div><div class="inv-kpi-val">${fmtKsh(totalSpend)}</div><div class="inv-kpi-sub">across all clients</div></div>
+    <div class="inv-kpi inv-kpi-money"><div class="inv-kpi-label">Avg per client</div><div class="inv-kpi-val">${fmtKsh(avg)}</div><div class="inv-kpi-sub">lifetime value</div></div>
     <div class="inv-kpi"><div class="inv-kpi-label">Repeat rate</div><div class="inv-kpi-val">${ledger.length ? Math.round(repeat / ledger.length * 100) : 0}%</div><div class="inv-kpi-sub">bought 2+ times</div></div>
   `;
   if (!ledger.length) {
@@ -2501,7 +2510,7 @@ function renderClients() {
   listEl.innerHTML = rows.map(c => {
     const its = c.purchases.slice()
       .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
-      .map(p => `<span class="client-item">${escapeHtml(p.bagName)}${p.size ? ' · EU ' + escapeHtml(p.size) : ''} × ${p.qty} · ${fmtKsh(p.amount)}</span>`).join('');
+      .map(p => `<span class="client-item">${escapeHtml(p.bagName)}${p.size ? ' · EU ' + escapeHtml(p.size) : ''} × ${p.qty}<span class="client-money"> · ${fmtKsh(p.amount)}</span></span>`).join('');
     const has = c.purchases.length;
     const when = has ? `last ${relTime(new Date(c.lastAt).toISOString())}`
                      : (c.addedAt ? `added ${relTime(c.addedAt)}` : 'no purchases yet');
@@ -2514,7 +2523,7 @@ function renderClients() {
       <div class="client-row">
         <div class="client-row-main">
           <div class="client-row-name">${escapeHtml(c.name || 'Unnamed buyer')}${manualTag}</div>
-          <div class="client-row-sub">${escapeHtml(c.phone)} · ${has} purchase${has === 1 ? '' : 's'} · ${fmtKsh(c.spend)} spent · ${when}${owedMap[c.phone] > 0 ? ` · <span class="owed-amount">owes ${fmtKsh(owedMap[c.phone])}</span>` : ''}</div>
+          <div class="client-row-sub">${escapeHtml(c.phone)} · ${has} purchase${has === 1 ? '' : 's'}<span class="client-money"> · ${fmtKsh(c.spend)} spent</span> · ${when}${owedMap[c.phone] > 0 ? ` · <span class="owed-amount">owes ${fmtKsh(owedMap[c.phone])}</span>` : ''}</div>
           ${noteLine}
           <div class="client-items">${its}</div>
         </div>

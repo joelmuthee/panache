@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>The Panache · Staff sign in</title>
+<link rel="icon" type="image/jpg" href="images/logo.jpg">
+<meta name="theme-color" content="#52147a">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=20260715staff">
+</head>
+<body style="background:#faf7ff;">
+
+<div class="login-wrap">
+  <h1>The Panache</h1>
+  <p>Staff sign in — enter your staff password to start selling</p>
+  <div class="field">
+    <label>Staff password</label>
+    <input id="staffPw" type="password" autocomplete="current-password">
+  </div>
+  <button class="btn-admin primary" id="staffLoginBtn" style="width:100%;margin-top:4px;">Sign in</button>
+  <p id="staffErr" style="color:#b00020;font-size:13px;text-align:center;margin-top:12px;display:none;">Wrong password</p>
+</div>
+
+<script>
+  // Staff sign-in — client-side only (Panache has no login worker). Compares the
+  // entered password against the same constants admin.js uses, saves the role,
+  // then hands off to admin.html which reads the role and shows the limited view.
+  const ADMIN_PASSWORD = 'panache123';
+  const STAFF_PASSWORD = 'panachestaff';
+  const pwEl = document.getElementById('staffPw');
+  const errEl = document.getElementById('staffErr');
+  const btn = document.getElementById('staffLoginBtn');
+  function go() {
+    const pw = pwEl.value;
+    errEl.style.display = 'none';
+    if (!pw) return;
+    if (pw === ADMIN_PASSWORD || pw === STAFF_PASSWORD) {
+      sessionStorage.setItem('panache_auth', '1');
+      sessionStorage.setItem('panache_role', pw === ADMIN_PASSWORD ? 'owner' : 'assistant');
+      location.href = 'admin.html';
+    } else {
+      errEl.style.display = 'block';
+    }
+  }
+  btn.addEventListener('click', go);
+  pwEl.addEventListener('keypress', e => { if (e.key === 'Enter') go(); });
+</script>
+</body>
+</html>
