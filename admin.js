@@ -1160,7 +1160,7 @@ window.bulkSell = () => {
       firstColor = colOptions[0] || '';
       colorCtl = `<select class="bsr-color" data-id="${b.id}">${colOptions.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}</select>`;
     }
-    return `<div class="bulksell-row"><span class="bulksell-row-name">${escapeHtml(b.name)} · ${fmtKsh(bsEffPrice(b))}</span>${colorCtl}${bsSizeControl(b, firstColor)}</div>`;
+    return `<div class="bulksell-row"><span class="bulksell-row-name">${escapeHtml(b.name)}</span>${colorCtl}${bsSizeControl(b, firstColor)}<input class="bsr-price" type="number" min="0" inputmode="numeric" data-id="${b.id}" value="${bsEffPrice(b)}" aria-label="Sale price for ${escapeHtml(b.name)}"></div>`;
   }).join('');
   document.getElementById('bulkSellTotal').textContent = `Total: ${fmtKsh(bulkSellTotalAmt)} · ${list.length} item${list.length === 1 ? '' : 's'}`;
   ['bulkSellName', 'bulkSellPhone', 'bulkSellNotes', 'bulkSellPaid', 'bulkSellCustSearch'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
@@ -1181,6 +1181,25 @@ document.getElementById('bulkSellRows')?.addEventListener('change', e => {
   if (!b || !row) return;
   row.querySelector('.bsr-size, .bsr-onesize')?.remove();
   row.insertAdjacentHTML('beforeend', bsSizeControl(b, cs.value));
+  const priceEl = row.querySelector('.bsr-price');
+  if (priceEl) row.appendChild(priceEl); // keep price input last after re-adding size
+});
+// Editing a per-row price re-totals the lot live (so the Total + owing hint stay right).
+function recalcBulkTotal() {
+  const list = bulkSellableSelected();
+  let t = 0;
+  for (const b of list) {
+    const el = document.querySelector(`.bsr-price[data-id="${b.id}"]`);
+    const v = el ? parseInt(el.value, 10) : NaN;
+    t += (isNaN(v) || v < 0) ? bsEffPrice(b) : v;
+  }
+  bulkSellTotalAmt = t;
+  const totalEl = document.getElementById('bulkSellTotal');
+  if (totalEl) totalEl.textContent = `Total: ${fmtKsh(t)} · ${list.length} item${list.length === 1 ? '' : 's'}`;
+  updateBulkSellHint();
+}
+document.getElementById('bulkSellRows')?.addEventListener('input', e => {
+  if (e.target.classList && e.target.classList.contains('bsr-price')) recalcBulkTotal();
 });
 function updateBulkSellHint() {
   const raw = (document.getElementById('bulkSellPaid').value || '').trim();
@@ -1199,7 +1218,10 @@ function commitBulkSold(withBuyer) {
     const sel = document.querySelector(`.bsr-size[data-id="${b.id}"]`);
     const one = document.querySelector(`.bsr-onesize[data-id="${b.id}"]`);
     const colorSel = document.querySelector(`.bsr-color[data-id="${b.id}"]`);
-    return { id: b.id, size: sel ? sel.value : (one ? one.dataset.size : 'One size'), color: colorSel ? colorSel.value : '', price: bsEffPrice(b) };
+    const priceEl = document.querySelector(`.bsr-price[data-id="${b.id}"]`);
+    const pv = priceEl ? parseInt(priceEl.value, 10) : NaN;
+    const price = (isNaN(pv) || pv < 0) ? bsEffPrice(b) : pv;
+    return { id: b.id, size: sel ? sel.value : (one ? one.dataset.size : 'One size'), color: colorSel ? colorSel.value : '', price };
   });
   const payMethod = document.querySelector('#bulkSellPay .pos-pay-btn.active')?.dataset.pay || 'mpesa';
   const buyer = { name: '', phone: '', notes: '' };
@@ -1561,6 +1583,51 @@ function initExpenses() {
   expSyncTypeFields();
 }
 
+// Custom date-range sales: owner picks From/To and sees pairs + revenue (+ profit)
+// for that period. Native date inputs = webview-safe, no library. Panache = items[].
+function renderCustomRange() {
+  const el = document.getElementById('rangeResult');
+  if (!el) return;
+  const fromV = document.getElementById('rangeFrom')?.value;
+  const toV = document.getElementById('rangeTo')?.value;
+  if (!fromV || !toV) {
+    el.innerHTML = '<span style="color:var(--ink-faint);font-size:13px;">Pick a start and end date to see sales for that period.</span>';
+    return;
+  }
+  const from = new Date(fromV + 'T00:00:00');
+  const to = new Date(toV + 'T23:59:59.999');
+  if (from > to) { el.innerHTML = '<span style="color:#b00020;font-size:13px;">The "From" date is after the "To" date.</span>'; return; }
+  let count = 0, revenue = 0, profit = 0, costKnown = 0, soldWithSale = 0;
+  items.forEach(it => {
+    (it.sales || []).forEach(s => {
+      const d = new Date(s.soldAt);
+      if (d >= from && d <= to) {
+        const qty = Number(s.qty) || 1;
+        const line = (Number(s.salePrice || it.price)) * qty;
+        count += qty; revenue += line; soldWithSale++;
+        if (it.cost) { profit += line - it.cost * qty; costKnown++; }
+      }
+    });
+  });
+  const fmtD = v => new Date(v + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  const profitLine = costKnown > 0
+    ? `<div class="kpi-profit" style="font-size:12px;color:#2e7d32;font-weight:600;margin-top:4px;">Profit ${fmtKsh(Math.round(profit))}${costKnown < soldWithSale ? ` <span style="color:#999;font-weight:400;">· from ${costKnown}/${soldWithSale} with cost</span>` : ''}</div>`
+    : '';
+  el.innerHTML = `
+    <div class="kpi-card" style="margin:0;">
+      <div class="kpi-label">${fmtD(fromV)} to ${fmtD(toV)}</div>
+      <div class="kpi-count">${count} <span class="kpi-unit">pairs</span></div>
+      <div class="kpi-revenue">${fmtKsh(revenue)}</div>${profitLine}
+    </div>`;
+}
+document.getElementById('rangeFrom')?.addEventListener('change', renderCustomRange);
+document.getElementById('rangeTo')?.addEventListener('change', renderCustomRange);
+document.getElementById('rangeClearBtn')?.addEventListener('click', () => {
+  const f = document.getElementById('rangeFrom'), t = document.getElementById('rangeTo');
+  if (f) f.value = ''; if (t) t.value = '';
+  renderCustomRange();
+});
+
 function renderDashboard() {
   if (typeof renderOwed === 'function') renderOwed();
   if (typeof renderExpenses === 'function') renderExpenses();
@@ -1619,6 +1686,8 @@ function _renderDashboardInner() {
       <div class="kpi-revenue">${fmtKsh(b.revenue)}</div>${profitSub}
     </div>`;
   }).join('');
+
+  renderCustomRange();
 
   const splitEl = document.getElementById('posTodaySplit');
   if (splitEl) {
