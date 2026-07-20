@@ -1022,6 +1022,16 @@ img { max-width: 100%; display: block; }
 .admin-nav a.admin-nav-pos { background: var(--choco, var(--ink)); color: #fff !important; }
 .admin-nav a.admin-nav-pos.active, .admin-nav a.admin-nav-pos:hover { background: var(--choco-deep, var(--gold-deep)); color: #fff !important; }
 .pos-sub { font-size: 13.5px; color: var(--ink-soft); margin: -6px 0 14px; line-height: 1.5; }
+.pos-multi-hint { font-size: 13px; line-height: 1.5; color: #6b5b00; background: #fff7d6; border: 1px solid #f0e2a0; border-radius: 8px; padding: 9px 12px; margin: 0 0 14px; }
+.pos-cart { display: flex; flex-direction: column; gap: 6px; margin: 12px 0 4px; }
+.pos-cart-row { display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.035); border: 1px solid rgba(0,0,0,0.1); border-radius: 10px; padding: 8px 12px; }
+.pos-cart-name { flex: 1 1 auto; min-width: 0; font-size: 13px; color: var(--ink); overflow-wrap: anywhere; }
+.pos-cart-amt { flex: 0 0 auto; font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.pos-cart-x { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.15); background: #fff; color: #b00020; font-size: 16px; line-height: 1; cursor: pointer; font-family: inherit; padding: 0; }
+.pos-cart-x:hover { background: #fff0f1; border-color: #e0a3ac; }
+.pos-cart-sub { display: flex; justify-content: space-between; font-size: 13.5px; font-weight: 700; color: var(--ink); padding: 6px 12px 2px; }
+.pos-section-head { font-size: 13px; font-weight: 700; color: var(--ink); letter-spacing: 0.02em; margin: 16px 0 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+.pos-section-head small { font-weight: 400; color: var(--ink-faint); letter-spacing: 0; }
 .pos-today { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 16px; }
 .pos-today-label { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); font-weight: 700; margin-right: 2px; }
 .pos-chip { font-size: 13px; font-weight: 600; padding: 5px 12px; border-radius: 999px; background: var(--surface, #f1eef7); color: var(--ink); border: 1px solid var(--line); }

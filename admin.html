@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#52147a">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20260717bulkprice">
+<link rel="stylesheet" href="styles.css?v=20260720cart">
 </head>
 <body style="background:#faf7ff;">
 
@@ -82,6 +82,7 @@
   <section class="dash" id="posDash">
     <h2 class="dash-title">🛒 Sell in store</h2>
     <p class="pos-sub">Record a sale you made in person. Stock updates and it lands in your Sales totals automatically. Tap <strong>M-Pesa</strong> just to note how you were paid.</p>
+    <p class="pos-multi-hint">🛍️ Buying more than one? Add the first item, tap <strong>➕ Add another item</strong>, then take one payment for everything.</p>
     <div id="posTodaySplit" class="pos-today"></div>
     <div class="pos-card">
       <div class="field">
@@ -90,6 +91,11 @@
         <div id="posItemResults" class="pos-results" style="display:none;"></div>
       </div>
       <div id="posChosen" class="pos-chosen" style="display:none;"></div>
+
+      <!-- Cart: several lines (same shoe different sizes, or different shoes) go into ONE sale -->
+      <div id="posCartList" class="pos-cart" style="display:none;"></div>
+
+      <!-- LINE editor — builds one cart line (item + size + qty + price) -->
       <div id="posSaleFields" style="display:none;">
         <div class="field" id="posColorField" style="display:none;"><label>Colour</label><select id="posColor"></select></div>
         <div class="pos-row">
@@ -101,6 +107,14 @@
           <label>Discount (Ksh) <small style="font-weight:400;color:#999;">— optional. Money off this sale, e.g. 200. Lowers the price, it is NOT a debt.</small></label>
           <input id="posDiscount" type="number" min="0" step="100" placeholder="0">
         </div>
+        <div class="admin-actions">
+          <button class="btn-admin" id="posAddLineBtn" type="button">➕ Add another item</button>
+        </div>
+      </div>
+
+      <!-- SALE section — one payment + one customer + one receipt for the whole cart -->
+      <div id="posSaleSection" style="display:none;">
+        <div class="pos-section-head">Payment &amp; customer <small>applies to the whole sale</small></div>
         <div class="field">
           <label>Amount paid now (Ksh) <small style="font-weight:400;color:#999;">leave blank if paid in full</small></label>
           <div class="paid-row">
@@ -122,6 +136,10 @@
             <input id="posBuyerName" type="text" placeholder="Customer name (optional)">
             <input id="posBuyerPhone" type="tel" placeholder="Phone e.g. 0712345678 (optional)" style="margin-top:8px;">
           </div>
+        </div>
+        <div class="field">
+          <label>Note <small style="font-weight:400;color:#999;">optional, e.g. promised to pay end of month</small></label>
+          <input id="posNotes" type="text" placeholder="Add a note about this sale">
         </div>
         <div class="admin-actions">
           <button class="btn-admin primary" id="posRecordBtn" type="button">Record sale</button>
@@ -747,6 +765,6 @@
   </div>
 </div>
 
-<script src="admin.js?v=20260717bulkprice"></script>
+<script src="admin.js?v=20260720cart"></script>
 </body>
 </html>
