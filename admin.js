@@ -1274,6 +1274,18 @@ function commitBulkSold(withBuyer) {
   const total = soldList.reduce((s, x) => s + (Number(x.sale.salePrice) || 0), 0);
   const owed = hasPartial ? Math.max(0, total - Math.max(0, parseInt(paidRaw, 10) || 0)) : 0;
   showToast(`Sold ${soldList.length} item${soldList.length === 1 ? '' : 's'}${withBuyer && buyer.name ? ' to ' + buyer.name : ''} · ${fmtKsh(total)}${owed > 0 ? ` · ${fmtKsh(owed)} owed` : ''}`);
+  // Full multi-item receipt right away (parity with the POS cart) — lists EVERY
+  // product bought, so a bulk "sell to one customer" produces one complete receipt.
+  if (soldList.length) {
+    const paidTotal = hasPartial ? Math.min(total, Math.max(0, parseInt(paidRaw, 10) || 0)) : total;
+    lastPosSale = {
+      lines: soldList.map(({ item, sale }) => ({ name: item.name, size: sale.size || '', color: sale.color || '', qty: Number(sale.qty) || 1, amount: Number(sale.salePrice) || 0, listPrice: sale.listPrice || sale.salePrice, discount: sale.discount || 0 })),
+      total, paid: paidTotal, balance: Math.max(0, total - paidTotal),
+      paymentMethod: payMethod, buyerName: withBuyer ? buyer.name : '', buyerPhone: withBuyer ? buyer.phone : '', soldAt,
+    };
+    showPosReceipt(lastPosSale);
+    document.getElementById('posDash').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 }
 // Existing-customer picker.
 function wireCustomerPicker({ searchId, resultsId, nameId, phoneId }) {
@@ -2193,21 +2205,31 @@ window.deleteItem = deleteItem;
 window.openSaleModal = openSaleModal;
 window.openRestockModal = openRestockModal;
 window.reissueReceipt = (itemId, soldAt) => {
-  const item = items.find(i => i.id === itemId);
-  const s = item && (item.sales || []).find(x => x.soldAt === soldAt);
-  if (!item || !s) { showToast('Could not find that sale.'); return; }
-  const qty = Number(s.qty) || 1;
-  const amount = Number(s.salePrice || item.price) || 0;
-  const balance = saleBalance(item, s);
-  const total = amount * qty;
+  // A multi-item sale (POS cart OR bulk "sell to one customer") records ONE sale
+  // row per item, all sharing the same soldAt + buyer. Rebuild the WHOLE receipt,
+  // not just the clicked line, so the image/WhatsApp receipt lists every product.
+  const anchorItem = items.find(i => i.id === itemId);
+  const anchor = anchorItem && (anchorItem.sales || []).find(x => x.soldAt === soldAt);
+  if (!anchorItem || !anchor) { showToast('Could not find that sale.'); return; }
+  const sameBuyer = s => (s.buyerName || '') === (anchor.buyerName || '') && (s.buyerPhone || '') === (anchor.buyerPhone || '');
+  const group = [];
+  items.forEach(it => (it.sales || []).forEach(s => { if (s.soldAt === soldAt && sameBuyer(s)) group.push({ item: it, sale: s }); }));
+  const src = group.length ? group : [{ item: anchorItem, sale: anchor }];
+  let total = 0, paid = 0;
+  const lines = src.map(({ item, sale }) => {
+    const qty = Number(sale.qty) || 1;
+    const amount = Number(sale.salePrice != null ? sale.salePrice : item.price) || 0;
+    total += amount * qty;
+    paid += Number(sale.amountPaid != null ? sale.amountPaid : amount * qty) || 0;
+    return { name: item.name, size: sale.size || '', color: sale.color || '', qty, amount, listPrice: sale.listPrice || amount, discount: sale.discount || 0 };
+  });
   lastPosSale = {
-    lines: [{ name: item.name, size: s.size || '', color: s.color || '', qty, amount, listPrice: s.listPrice || amount, discount: s.discount || 0 }],
-    total, paid: total - balance, balance,
-    paymentMethod: s.paymentMethod, buyerName: s.buyerName, buyerPhone: s.buyerPhone, soldAt: s.soldAt,
+    lines, total, paid, balance: Math.max(0, total - paid),
+    paymentMethod: anchor.paymentMethod, buyerName: anchor.buyerName, buyerPhone: anchor.buyerPhone, soldAt,
   };
   showPosReceipt(lastPosSale);
   document.getElementById('posDash').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  showToast('Receipt ready — send it on WhatsApp or as an image below.');
+  showToast(lines.length > 1 ? `Receipt for ${lines.length} items ready — send it below.` : 'Receipt ready — send it on WhatsApp or as an image below.');
 };
 window.undoSale = undoSale;
 window.openEditSale = openEditSale;
