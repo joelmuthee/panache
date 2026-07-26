@@ -60,6 +60,54 @@ const PAGE_SIZE = 15;
     return itemBaseLikes(id) + (getLikedSet().has(id) ? 1 : 0);
   }
 
+  // ── WISHLIST — reuses the liked set as the saved list (fleet pattern: one
+  // heart = save + like count). Pick several pairs → check availability for all
+  // in ONE WhatsApp. Respects the "Check availability" label lock.
+  function updateWlCount() {
+    const btn = document.getElementById('wishlistBtn'); if (!btn) return;
+    const n = getLikedSet().size;
+    const c = btn.querySelector('.wl-count'); if (c) c.textContent = n || '';
+    btn.classList.toggle('has-items', n > 0);
+  }
+  function openWishlist() {
+    const modal = document.getElementById('wishlistModal'); if (!modal) return;
+    const body = document.getElementById('wishlistBody');
+    const saved = items.filter(i => getLikedSet().has(i.id));
+    if (!saved.length) {
+      body.innerHTML = '<p style="text-align:center;color:#999;padding:24px 0;">No pairs picked yet. Tap the ♡ on any pair to add it here, then check availability of them all in one WhatsApp message.</p>';
+    } else {
+      body.innerHTML = saved.map(i => `
+        <div class="wl-row">
+          <img src="${(i.images && i.images[0]) || i.image}" alt="${escapeHtml(i.name)}">
+          <div class="wl-row-body"><div class="wl-row-name">${escapeHtml(i.name)}</div><div class="wl-row-meta">${i.price > 0 ? fmtPrice(i.price) : 'Price on request'}</div></div>
+          <button class="wl-remove" data-remove="${escapeHtml(i.id)}" aria-label="Remove">&times;</button>
+        </div>`).join('');
+    }
+    document.getElementById('wishlistEnquireAll').style.display = saved.length ? 'inline-flex' : 'none';
+    modal.style.display = 'flex'; document.body.style.overflow = 'hidden';
+  }
+  function closeWishlist() {
+    const modal = document.getElementById('wishlistModal'); if (!modal) return;
+    modal.style.display = 'none'; document.body.style.overflow = '';
+  }
+  document.getElementById('wishlistBtn')?.addEventListener('click', e => { e.preventDefault(); openWishlist(); });
+  document.getElementById('wishlistClose')?.addEventListener('click', closeWishlist);
+  document.getElementById('wishlistModal')?.addEventListener('click', e => {
+    if (e.target.id === 'wishlistModal') return closeWishlist();
+    const rm = e.target.closest('[data-remove]');
+    if (rm) { const s = getLikedSet(); s.delete(rm.dataset.remove); saveLikedSet(s); openWishlist(); updateWlCount(); render(); }
+  });
+  document.getElementById('wishlistEnquireAll')?.addEventListener('click', e => {
+    e.preventDefault();
+    const saved = items.filter(i => getLikedSet().has(i.id));
+    if (!saved.length) return;
+    const phone = settings.whatsappNumber || '2540734737373';
+    const lines = saved.map((i, idx) => `${idx + 1}. *${i.name}*${i.price > 0 ? ' (' + fmtPrice(i.price) + ')' : ''}`);
+    const msg = `Hi! I'd like to check availability of these pairs from The Panache Store:\n\n${lines.join('\n')}\n\nAre they available?`;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+  });
+  updateWlCount();
+
   // ── HELPERS ──
   function fmtPrice(n) {
     return 'Ksh ' + Number(n).toLocaleString('en-KE');
@@ -434,6 +482,7 @@ const PAGE_SIZE = 15;
       saveLikedSet(liked);
       const countEl = likeBtn.querySelector('.like-count');
       if (countEl) countEl.textContent = itemLikeCount(id);
+      updateWlCount();
       return;
     }
 

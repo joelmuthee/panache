@@ -24,7 +24,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20260626cstock">
+<link rel="stylesheet" href="styles.css?v=20260726wl">
 </head>
 <body>
 
@@ -42,6 +42,10 @@
       <a href="#about">About</a>
       <a href="#how">How to buy</a>
       <a href="#contact">Contact</a>
+      <a href="#" class="nav-wl" id="wishlistBtn" aria-label="Pairs you've picked to check availability">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        <span class="wl-count"></span>
+      </a>
       <a href="https://wa.me/2540734737373" class="nav-cta" target="_blank" rel="noopener">WhatsApp</a>
     </div>
   </div>
@@ -93,6 +97,8 @@
     <p class="filter-meta" id="filterMeta"></p>
   </div>
 </section>
+
+<p class="multi-enquire-hint container">Want a few? Tap the <span class="meh-heart">♡</span> on each one you like, then open your list at the top to check availability for all at once.</p>
 
 <main class="gallery container" id="gallery">
   <!-- Items injected here -->
@@ -206,12 +212,24 @@
 </footer>
 
 <!-- Lightbox -->
+<div id="wishlistModal" class="modal" role="dialog" aria-modal="true" aria-label="Pairs you've picked">
+  <div class="modal-card">
+    <h3>Pairs you've picked</h3>
+    <p class="sub">Check availability for all of these in one WhatsApp message.</p>
+    <div id="wishlistBody" class="wl-body"></div>
+    <div class="wl-footer">
+      <a id="wishlistEnquireAll" class="btn-card primary" href="#">Check availability for all</a>
+      <button type="button" id="wishlistClose" class="wl-close-btn">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="lightbox" id="lightbox" aria-hidden="true">
   <button class="lightbox-close" id="lightboxClose" aria-label="Close">&times;</button>
   <img class="lightbox-img" id="lightboxImg" alt="">
   <div class="lightbox-caption" id="lightboxCaption"></div>
 </div>
 
-<script src="main.js?v=20260626cstock"></script>
+<script src="main.js?v=20260726wl"></script>
 </body>
 </html>
