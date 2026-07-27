@@ -82,12 +82,18 @@ const PAGE_SIZE = 15;
     if (!saved.length) {
       body.innerHTML = '<p style="text-align:center;color:#999;padding:24px 0;">No pairs picked yet. Tap the ♡ on any pair to add it here, then check availability of them all in one WhatsApp message.</p>';
     } else {
-      body.innerHTML = saved.map(i => `
+      body.innerHTML = saved.map(i => {
+        const sizes = panacheSizes(i);
+        const picker = sizes.length > 1
+          ? `<select class="wl-size-select" data-size-for="${escapeHtml(i.id)}" aria-label="Choose size for ${escapeHtml(i.name)}"><option value="">Choose EU size…</option>${sizes.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('')}</select>`
+          : '';
+        return `
         <div class="wl-row">
           <img src="${(i.images && i.images[0]) || i.image}" alt="${escapeHtml(i.name)}">
-          <div class="wl-row-body"><div class="wl-row-name">${escapeHtml(i.name)}</div><div class="wl-row-meta">${i.price > 0 ? fmtPrice(i.price) : 'Price on request'}</div></div>
+          <div class="wl-row-body"><div class="wl-row-name">${escapeHtml(i.name)}</div><div class="wl-row-meta">${i.price > 0 ? fmtPrice(i.price) : 'Price on request'}</div>${picker}</div>
           <button class="wl-remove" data-remove="${escapeHtml(i.id)}" aria-label="Remove">&times;</button>
-        </div>`).join('');
+        </div>`;
+      }).join('');
     }
     document.getElementById('wishlistEnquireAll').style.display = saved.length ? 'inline-flex' : 'none';
     modal.style.display = 'flex'; document.body.style.overflow = 'hidden';
@@ -104,16 +110,35 @@ const PAGE_SIZE = 15;
     const rm = e.target.closest('[data-remove]');
     if (rm) { const s = getLikedSet(); s.delete(rm.dataset.remove); saveLikedSet(s); openWishlist(); updateWlCount(); render(); }
   });
+  document.getElementById('wishlistModal')?.addEventListener('change', e => {
+    if (e.target.classList.contains('wl-size-select')) e.target.classList.remove('needs-size');
+  });
   document.getElementById('wishlistEnquireAll')?.addEventListener('click', e => {
     e.preventDefault();
     const saved = items.filter(i => getLikedSet().has(i.id));
     if (!saved.length) return;
     const phone = settings.whatsappNumber || '2540734737373';
+    // Capture an EU size per pair; require a pick for multi-size pairs so the shop
+    // gets the exact size up front (matches the single-item enquiry).
+    const chosen = {}; const missing = [];
+    saved.forEach(i => {
+      const sizes = panacheSizes(i);
+      if (sizes.length > 1) {
+        const sel = document.querySelector(`.wl-size-select[data-size-for="${i.id}"]`);
+        if (sel && sel.value) chosen[i.id] = sel.value; else missing.push(sel);
+      } else if (sizes.length === 1) chosen[i.id] = sizes[0];
+    });
+    if (missing.length) {
+      missing.forEach(s => s && s.classList.add('needs-size'));
+      missing[0]?.scrollIntoView({ block: 'center' });
+      return;
+    }
     // Each item carries its /share/<id> page so the shop can open the exact pair.
     const lines = saved.map((i, idx) => {
+      const size = chosen[i.id] ? ` (EU ${chosen[i.id]})` : '';
       const price = i.price > 0 ? ' (' + fmtPrice(i.price) + ')' : '';
       const link = i.id ? `\n${SHARE_BASE}${encodeURIComponent(i.id)}` : '';
-      return `${idx + 1}. *${i.name}*${price}${link}`;
+      return `${idx + 1}. *${i.name}*${size}${price}${link}`;
     });
     const msg = `Hi! I'd like to check availability of these pairs from The Panache Store:\n\n${lines.join('\n\n')}\n\nAre they available?`;
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
@@ -204,6 +229,12 @@ const PAGE_SIZE = 15;
     return `<div class="color-chips" id="colors-${item.id}"><span class="color-label">Colour:</span>${chips}</div>${colorStock ? `<p class="color-pick-hint" id="color-hint-${item.id}">Pick a colour to see sizes</p>` : ''}`;
   }
 
+  // Plain size list for the picked-list picker. Colour-stock items need a colour
+  // AND size (a matrix) — too much for the drawer, so leave those to the chat.
+  function panacheSizes(item) {
+    if (itemHasColorStock(item)) return [];
+    return (item.sizes || '').split(',').map(s => s.trim()).filter(Boolean);
+  }
   function sizeChips(item) {
     // Colour-stock items: sizes appear AFTER a colour is picked (driven by the
     // colour handler). Start with whatever the currently-selected colour offers.

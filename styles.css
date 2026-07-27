@@ -756,6 +756,9 @@ img { max-width: 100%; display: block; }
 .wl-row-body { flex: 1 1 auto; min-width: 0; }
 .wl-row-name { font-weight: 600; font-size: 14px; color: var(--ink, #1a0a2e); }
 .wl-row-meta { font-size: 13px; color: var(--ink-soft, #4a3060); }
+/* Per-item size picker in the picked-list — capture the EU size before enquiring */
+.wl-size-select { margin-top: 7px; font: inherit; font-size: 13px; padding: 6px 8px; width: auto; max-width: 100%; border: 1px solid var(--line, #ede8f0); border-radius: 8px; background: var(--surface, #fff); color: var(--ink, #1a0a2e); cursor: pointer; }
+.wl-size-select.needs-size { border-color: #d64545; box-shadow: 0 0 0 2px rgba(214,69,69,0.18); }
 .wl-remove { background: none; border: none; font-size: 22px; color: #b00020; cursor: pointer; line-height: 1; padding: 0 4px; flex-shrink: 0; }
 .wl-footer { display: flex; gap: 10px; align-items: center; }
 .wl-footer .btn-card.primary { flex: 1 1 auto; text-align: center; justify-content: center; }
