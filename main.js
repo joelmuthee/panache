@@ -68,6 +68,12 @@ const PAGE_SIZE = 15;
     const n = getLikedSet().size;
     const c = btn.querySelector('.wl-count'); if (c) c.textContent = n || '';
     btn.classList.toggle('has-items', n > 0);
+    const bar = document.getElementById('wlBar');
+    if (bar) {
+      bar.querySelector('.wl-bar-n').textContent = n;
+      bar.querySelector('.wl-bar-count').childNodes[1].textContent = n === 1 ? ' pair picked' : ' pairs picked';
+      bar.hidden = n === 0;
+    }
   }
   function openWishlist() {
     const modal = document.getElementById('wishlistModal'); if (!modal) return;
@@ -91,6 +97,7 @@ const PAGE_SIZE = 15;
     modal.style.display = 'none'; document.body.style.overflow = '';
   }
   document.getElementById('wishlistBtn')?.addEventListener('click', e => { e.preventDefault(); openWishlist(); });
+  document.getElementById('wlBar')?.addEventListener('click', () => openWishlist());
   document.getElementById('wishlistClose')?.addEventListener('click', closeWishlist);
   document.getElementById('wishlistModal')?.addEventListener('click', e => {
     if (e.target.id === 'wishlistModal') return closeWishlist();
