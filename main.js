@@ -109,8 +109,13 @@ const PAGE_SIZE = 15;
     const saved = items.filter(i => getLikedSet().has(i.id));
     if (!saved.length) return;
     const phone = settings.whatsappNumber || '2540734737373';
-    const lines = saved.map((i, idx) => `${idx + 1}. *${i.name}*${i.price > 0 ? ' (' + fmtPrice(i.price) + ')' : ''}`);
-    const msg = `Hi! I'd like to check availability of these pairs from The Panache Store:\n\n${lines.join('\n')}\n\nAre they available?`;
+    // Each item carries its /share/<id> page so the shop can open the exact pair.
+    const lines = saved.map((i, idx) => {
+      const price = i.price > 0 ? ' (' + fmtPrice(i.price) + ')' : '';
+      const link = i.id ? `\n${SHARE_BASE}${encodeURIComponent(i.id)}` : '';
+      return `${idx + 1}. *${i.name}*${price}${link}`;
+    });
+    const msg = `Hi! I'd like to check availability of these pairs from The Panache Store:\n\n${lines.join('\n\n')}\n\nAre they available?`;
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
   });
   updateWlCount();
