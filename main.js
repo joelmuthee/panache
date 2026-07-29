@@ -9,6 +9,8 @@ const PAGE_SIZE = 15;
   let items = [];
   let settings = {};
   let suspended = false;
+  let suspendLevel = 'full';     // 'full' = site offline | 'admin' = site stays live
+  let suspendMode = 'prospect';  // 'prospect' = one-off pitch | 'client' = neutral copy
   let currentCat = 'all';
   let currentSize = 'all';
   let currentAvail = 'all';
@@ -37,7 +39,13 @@ const PAGE_SIZE = 15;
         const json = await res.json();
         if (Array.isArray(json.items)) items = json.items;
         if (json.settings) settings = json.settings;
-        suspended = !!json.suspended;
+        // Two independent things: the LEVEL decides whether buyers are affected at
+        // all (an 'admin' pause freezes only the owner's admin and leaves the shop
+        // live), and the MODE decides the overlay copy on a full pause. Old worker
+        // with neither field -> full pause, prospect copy (unchanged behaviour).
+        suspendLevel = json.suspendLevel || 'full';
+        suspendMode = json.suspend_mode || 'prospect';
+        suspended = !!json.suspended && suspendLevel !== 'admin';
       } catch (e) {}
     }
   }
@@ -651,7 +659,11 @@ const PAGE_SIZE = 15;
   function showSuspended() {
     document.documentElement.style.overflow = 'hidden';
     const shopName = settings.businessName || 'The Panache Store';
-    document.title = shopName + ' · Paused';
+    // Client pause: neutral wording only. Their buyers must never read anything
+    // about our billing, and we never pitch buying the shop over a paying
+    // client's storefront. The one-off pitch is for prospect/demo shops.
+    const isClient = suspendMode === 'client';
+    document.title = shopName + (isClient ? ' · Offline' : ' · Paused');
 
     const tagline = settings.tagline || 'Step into style.';
     const igHandle = (settings.instagram || 'thepanachekenya').replace(/^@/, '');
@@ -680,6 +692,22 @@ const PAGE_SIZE = 15;
     styleTag.textContent = css;
     document.head.appendChild(styleTag);
 
+    // Client copy: neutral, no pitch, and route buyers to the shop's OWN
+    // Instagram so the client keeps her customers while the site is down.
+    const clientBody = (
+      '<h1 class="pn-head">This website is temporarily offline</h1>'
+      + '<p class="pn-body">We are back shortly. '
+      + (igLink ? 'In the meantime you can see our latest stock and order on Instagram.' : 'Please check back soon.')
+      + '</p>'
+      + (igLink ? '<a class="pn-ig" href="' + igLink + '" target="_blank" rel="noopener">' + IG_SVG + ' See us on Instagram</a>' : '')
+    );
+    // Prospect copy: pitch the one-off win-back to the shop owner.
+    const prospectBody = (
+      '<h1 class="pn-head">This shop is paused</h1>'
+      + '<p class="pn-body">Not ready for a monthly plan? You don\'t need one.</p>'
+      + '<p class="pn-offer">Now you can <b>own this shop outright for a one-time Ksh 20,000</b>, no monthly fees. New stock you post on Instagram pulls straight into your shop. Buyers can filter by category and size to find what they want fast, then order on WhatsApp.</p>'
+      + '<a class="pn-ig" href="' + waLink + '" target="_blank" rel="noopener">' + WA_SVG + ' Bring my shop back</a>'
+    );
     const o = document.createElement('div');
     o.id = 'suspendedOverlay';
     o.innerHTML = (
@@ -687,10 +715,7 @@ const PAGE_SIZE = 15;
       + '<div class="pn-name">' + shopName + '</div>'
       + (tagline ? '<div class="pn-tag">' + tagline + '</div>' : '<div style="height:30px"></div>')
       + '<div class="pn-rule"></div>'
-      + '<h1 class="pn-head">This shop is paused</h1>'
-      + '<p class="pn-body">Not ready for a monthly plan? You don\'t need one.</p>'
-      + '<p class="pn-offer">Now you can <b>own this shop outright for a one-time Ksh 20,000</b>, no monthly fees. New stock you post on Instagram pulls straight into your shop. Buyers can filter by category and size to find what they want fast, then order on WhatsApp.</p>'
-      + '<a class="pn-ig" href="' + waLink + '" target="_blank" rel="noopener">' + WA_SVG + ' Bring my shop back</a>'
+      + (isClient ? clientBody : prospectBody)
     );
     document.body.appendChild(o);
   }

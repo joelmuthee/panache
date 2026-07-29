@@ -39,9 +39,26 @@ const isMaster = (req, env) => {
   return env.MASTER_TOKEN && auth.slice(7).trim() === env.MASTER_TOKEN.trim();
 };
 
+// Billing pause = TWO orthogonal KV keys. Keep them separate: one is who the
+// shop belongs to, the other is how hard we are squeezing.
+//
+//   suspended    PAUSE LEVEL — "0"/absent = active
+//                  "1"     FULL pause: public storefront goes offline.
+//                  "admin" PARTIAL pause: storefront stays 100% live, buyers see
+//                          nothing, only the owner's admin is frozen.
+//   suspend_mode WHO the shop is (sticky, survives a restore so it only has to be
+//                set once) — "prospect" (default) or "client". Controls the
+//                OVERLAY COPY on a full pause: a prospect gets the one-off
+//                win-back pitch, a client gets neutral "temporarily offline"
+//                wording with no mention of billing.
+//
+// Admin WRITES are frozen at BOTH levels — that is the actual leverage. The level
+// only decides whether her buyers are affected.
+const SUSPEND_LEVELS = ["1", "admin"];
 const suspendBlock = async (req, env) => {
   if (isMaster(req, env)) return null;
-  if ((await env.ITEMS.get("suspended")) === "1") {
+  const s = await env.ITEMS.get("suspended");
+  if (SUSPEND_LEVELS.includes(s)) {
     return json({ error: "account suspended; contact billing to restore the store" }, 403);
   }
   return null;
@@ -554,7 +571,7 @@ async function putData(env, data) {
 const IG_AUTOSYNC_USER_ID = "5474622302"; // @thepanachekenya
 const AUTOSYNC_MAX_ITEMS = 20;
 async function runIgAutoSync(env) {
-  if ((await env.ITEMS.get("suspended")) === "1") return { ok: false, skipped: "suspended" };
+  if (SUSPEND_LEVELS.includes(await env.ITEMS.get("suspended"))) return { ok: false, skipped: "suspended" };
   let cfg;
   try { cfg = JSON.parse(await env.ITEMS.get("autosync")) || {}; } catch { cfg = {}; }
   if (cfg.enabled === false) return { ok: false, skipped: "disabled" };
@@ -708,7 +725,13 @@ export default {
       const data = await getData(env);
       // Billing kill-switch: stored in its own KV key so the owner's admin
       // publishes (which only write "data") can never clear it.
-      data.suspended = (await env.ITEMS.get("suspended")) === "1";
+      // `suspended` is true in BOTH paused states (so the admin write-locks either
+      // way); `suspendLevel` tells the PUBLIC site whether to go dark ("full") or
+      // stay live ("admin"). Null when active. `suspend_mode` picks the copy.
+      const _sus = await env.ITEMS.get("suspended");
+      data.suspended = SUSPEND_LEVELS.includes(_sus);
+      data.suspendLevel = _sus === "admin" ? "admin" : (_sus === "1" ? "full" : null);
+      data.suspend_mode = (await env.ITEMS.get("suspend_mode")) || "prospect";
       // PRIVACY: strip buyer PII (sales[].buyerName/buyerPhone/notes, soldTo) for
       // unauthed callers. The storefront only reads sold/price/salePrice/sales.length,
       // never buyer details. The admin sends a Bearer token and gets the full data.
@@ -738,9 +761,19 @@ export default {
       if (!isMaster(request, env)) return json({ error: "unauthorized" }, 401);
       let body;
       try { body = await request.json(); } catch { return json({ error: "invalid json" }, 400); }
+      // body.mode  ("client"|"prospect") — WHO the shop is. Stored in its own key
+      //   ONLY when present, so a bare {suspended:false} restore never wipes it.
+      // body.level ("admin"|"full") — how hard. "admin" keeps the storefront live
+      //   and freezes only the admin; default "full" takes the shop offline.
+      //   `mode:"admin"` is also accepted as a level for callers written against
+      //   the earlier shape.
+      if (body.mode === "client" || body.mode === "prospect") await env.ITEMS.put("suspend_mode", body.mode);
       const suspended = !!body.suspended;
-      await env.ITEMS.put("suspended", suspended ? "1" : "0");
-      return json({ ok: true, suspended });
+      const adminOnly = body.level === "admin" || body.mode === "admin";
+      const val = suspended ? (adminOnly ? "admin" : "1") : "0";
+      await env.ITEMS.put("suspended", val);
+      const mode = (await env.ITEMS.get("suspend_mode")) || "prospect";
+      return json({ ok: true, suspended, level: suspended ? (adminOnly ? "admin" : "full") : null, mode });
     }
 
     // ---- Insights: site-wide event tracking (aggregated in KV) ----
