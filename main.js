@@ -704,8 +704,7 @@ const PAGE_SIZE = 15;
     // Prospect copy: pitch the one-off win-back to the shop owner.
     const prospectBody = (
       '<h1 class="pn-head">This shop is paused</h1>'
-      + '<p class="pn-body">Not ready for a monthly plan? You don\'t need one.</p>'
-      + '<p class="pn-offer">Now you can <b>own this shop outright for a one-time Ksh 20,000</b>, no monthly fees. New stock you post on Instagram pulls straight into your shop. Buyers can filter by category and size to find what they want fast, then order on WhatsApp.</p>'
+      + '<p class="pn-offer">Now you can <b>own this shop outright for Ksh 20,000</b>. New stock you post on Instagram pulls straight into your shop. Buyers can filter by category and size to find what they want fast, then order on WhatsApp.</p>'
       + '<a class="pn-ig" href="' + waLink + '" target="_blank" rel="noopener">' + WA_SVG + ' Bring my shop back</a>'
     );
     const o = document.createElement('div');
