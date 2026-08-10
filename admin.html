@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#52147a">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20260720cart">
+<link rel="stylesheet" href="styles.css?v=20260727daysales">
 </head>
 <body style="background:#faf7ff;">
 
@@ -166,6 +166,8 @@
       <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
         <div class="field" style="margin:0;"><label style="font-size:12px;">From</label><input type="date" id="rangeFrom" style="max-width:180px;"></div>
         <div class="field" style="margin:0;"><label style="font-size:12px;">To</label><input type="date" id="rangeTo" style="max-width:180px;"></div>
+        <button class="btn-admin" type="button" id="rangeTodayBtn" style="font-size:12px;padding:7px 12px;">Today</button>
+        <button class="btn-admin" type="button" id="rangeYesterdayBtn" style="font-size:12px;padding:7px 12px;">Yesterday</button>
         <button class="btn-admin" type="button" id="rangeClearBtn" style="font-size:12px;padding:7px 12px;">Clear</button>
       </div>
       <div id="rangeResult" style="margin-top:12px;"></div>
@@ -765,6 +767,6 @@
   </div>
 </div>
 
-<script src="admin.js?v=20260720cart"></script>
+<script src="admin.js?v=20260727daysales"></script>
 </body>
 </html>

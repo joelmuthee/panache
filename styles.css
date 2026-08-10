@@ -1299,3 +1299,13 @@ body.role-assistant .inv-kpi-money,
 body.role-assistant .client-money,
 body.role-assistant .clients-list .owed-amount,
 body.role-assistant #costField { display: none !important; }
+
+/* ===== Day / range sales list (Sales Overview) — what actually sold ===== */
+.pos-today-list { margin: 0 0 16px; }
+.pos-today-list-head { font-size: 13px; font-weight: 700; color: var(--ink-soft,#555); margin: 4px 0 8px; }
+.pos-today-list-head span { font-weight: 400; color: #999; }
+.pos-today-empty { font-size: 13px; color: #999; margin: 0; }
+.pos-today-row { display: flex; align-items: baseline; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line,#e6e6e6); font-size: 13px; }
+.pos-today-row .ptr-name { flex: 1 1 auto; font-weight: 600; }
+.pos-today-row .ptr-amt { flex: 0 0 auto; font-weight: 700; }
+.pos-today-row .ptr-time { flex: 0 0 auto; color: #999; font-size: 12px; min-width: 42px; text-align: right; }

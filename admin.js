@@ -1611,6 +1611,7 @@ function renderCustomRange() {
   const to = new Date(toV + 'T23:59:59.999');
   if (from > to) { el.innerHTML = '<span style="color:#b00020;font-size:13px;">The "From" date is after the "To" date.</span>'; return; }
   let count = 0, revenue = 0, profit = 0, costKnown = 0, soldWithSale = 0;
+  const rows = []; // WHAT sold, not just how much
   items.forEach(it => {
     (it.sales || []).forEach(s => {
       const d = new Date(s.soldAt);
@@ -1619,22 +1620,66 @@ function renderCustomRange() {
         const line = (Number(s.salePrice || it.price)) * qty;
         count += qty; revenue += line; soldWithSale++;
         if (it.cost) { profit += line - it.cost * qty; costKnown++; }
+        rows.push({ it, s, d, qty, line });
       }
     });
   });
+  rows.sort((a, b) => b.d - a.d);
   const fmtD = v => new Date(v + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   const profitLine = costKnown > 0
     ? `<div class="kpi-profit" style="font-size:12px;color:#2e7d32;font-weight:600;margin-top:4px;">Profit ${fmtKsh(Math.round(profit))}${costKnown < soldWithSale ? ` <span style="color:#999;font-weight:400;">· from ${costKnown}/${soldWithSale} with cost</span>` : ''}</div>`
     : '';
+  const oneDay = fromV === toV;
+  const itemsHtml = rows.length
+    ? rows.map(({ it, s, d, qty, line }) => {
+        const bits = [escapeHtml(it.name)];
+        if (s.size && String(s.size).toLowerCase() !== 'one size') bits.push('EU ' + escapeHtml(s.size));
+        if (s.color) bits.push(escapeHtml(s.color));
+        const when = oneDay
+          ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+          : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+        const who = s.buyerName ? ` <span style="opacity:.65;">· ${escapeHtml(s.buyerName)}</span>` : '';
+        return `<div class="pos-today-row">
+          <span class="ptr-name">${bits.join(' · ')}${qty > 1 ? ` ×${qty}` : ''}${who}</span>
+          <span class="ptr-amt">${fmtKsh(line)}</span>
+          <span class="ptr-time">${when}</span>
+        </div>`;
+      }).join('')
+    : '<p class="pos-today-empty">Nothing sold on this date.</p>';
   el.innerHTML = `
     <div class="kpi-card" style="margin:0;">
-      <div class="kpi-label">${fmtD(fromV)} to ${fmtD(toV)}</div>
+      <div class="kpi-label">${oneDay ? fmtD(fromV) : `${fmtD(fromV)} to ${fmtD(toV)}`}</div>
       <div class="kpi-count">${count} <span class="kpi-unit">pairs</span></div>
       <div class="kpi-revenue">${fmtKsh(revenue)}</div>${profitLine}
+    </div>
+    <div class="pos-today-list" style="margin-top:14px;">
+      <div class="pos-today-list-head">What sold${rows.length ? ` <span>(${rows.length})</span>` : ''}</div>
+      ${itemsHtml}
     </div>`;
 }
-document.getElementById('rangeFrom')?.addEventListener('change', renderCustomRange);
-document.getElementById('rangeTo')?.addEventListener('change', renderCustomRange);
+const _rangeDayStr = dt => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+// Picking ONE date is enough; mirror the empty box so it is a single tap.
+document.getElementById('rangeFrom')?.addEventListener('change', () => {
+  const f = document.getElementById('rangeFrom'), t = document.getElementById('rangeTo');
+  if (f?.value && t && !t.value) t.value = f.value;
+  renderCustomRange();
+});
+document.getElementById('rangeTo')?.addEventListener('change', () => {
+  const f = document.getElementById('rangeFrom'), t = document.getElementById('rangeTo');
+  if (t?.value && f && !f.value) f.value = t.value;
+  renderCustomRange();
+});
+document.getElementById('rangeTodayBtn')?.addEventListener('click', () => {
+  const d = _rangeDayStr(new Date());
+  document.getElementById('rangeFrom').value = d; document.getElementById('rangeTo').value = d;
+  renderCustomRange();
+});
+document.getElementById('rangeYesterdayBtn')?.addEventListener('click', () => {
+  const y = new Date(); y.setDate(y.getDate() - 1);
+  const d = _rangeDayStr(y);
+  document.getElementById('rangeFrom').value = d; document.getElementById('rangeTo').value = d;
+  renderCustomRange();
+});
 document.getElementById('rangeClearBtn')?.addEventListener('click', () => {
   const f = document.getElementById('rangeFrom'), t = document.getElementById('rangeTo');
   if (f) f.value = ''; if (t) t.value = '';
